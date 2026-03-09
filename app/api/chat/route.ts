@@ -125,15 +125,22 @@ VIKTIGA REGLER:
   const answer = response.content[0].type === 'text' ? response.content[0].text : ''
   const risk_level = extractRisk(answer)
 
+  // Spara och returnera query_id så frontend kan koppla feedback
   try {
-    await supabase.from('queries').insert({
-      question: lastQuestion,
-      answer,
-      sources,
-      risk_level,
-      session_id: sessionId || 'anonymous',
-    })
-  } catch (_) {}
+    const { data: inserted } = await supabase
+      .from('queries')
+      .insert({
+        question: lastQuestion,
+        answer,
+        sources,
+        risk_level,
+        session_id: sessionId || 'anonymous',
+      })
+      .select('id')
+      .single()
 
-  return Response.json({ content: answer, sources, risk_level })
+    return Response.json({ content: answer, sources, risk_level, query_id: inserted?.id })
+  } catch (_) {
+    return Response.json({ content: answer, sources, risk_level, query_id: null })
+  }
 }
