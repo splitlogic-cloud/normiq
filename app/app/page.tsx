@@ -19,7 +19,12 @@ const SUGGESTIONS = [
   'Vad gäller inkurans på lager?',
 ]
 
-type Message = { role: 'user' | 'assistant'; content: string }
+type Message = {
+  role: 'user' | 'assistant'
+  content: string
+  queryId?: string
+  feedback?: 1 | -1 | null
+}
 type HistoryItem = { id: string; question: string; created_at: string }
 
 function getRiskColor(risk: string) {
@@ -165,7 +170,6 @@ export default function App() {
     setMessages(newMessages)
     setLoading(true)
 
-    // Hämta user för att spara med user.id som session_id
     const { data: { user } } = await supabase.auth.getUser()
 
     try {
@@ -176,13 +180,40 @@ export default function App() {
       })
       const data = await res.json()
       const answerText = data.content || data.answer || 'Inget svar mottaget.'
-      setMessages([...newMessages, { role: 'assistant', content: answerText }])
-      // Uppdatera historik
+      setMessages([...newMessages, {
+        role: 'assistant',
+        content: answerText,
+        queryId: data.query_id,
+        feedback: null,
+      }])
       await loadHistory()
     } catch {
       setMessages([...newMessages, { role: 'assistant', content: 'Ett fel uppstod. Försök igen.' }])
     }
     setLoading(false)
+  }
+
+  async function handleFeedback(msgIndex: number, rating: 1 | -1) {
+    const msg = messages[msgIndex]
+    if (!msg || msg.feedback !== null && msg.feedback !== undefined) return
+
+    // Optimistisk uppdatering
+    setMessages(prev => prev.map((m, i) => i === msgIndex ? { ...m, feedback: rating } : m))
+
+    const question = messages[msgIndex - 1]?.content || ''
+    const { data: { user } } = await supabase.auth.getUser()
+
+    await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query_id: msg.queryId,
+        question,
+        answer: msg.content,
+        rating,
+        session_id: user?.id || sessionId,
+      }),
+    })
   }
 
   async function logout() {
@@ -236,6 +267,14 @@ export default function App() {
         }
         .top-btn:hover { border-color: #0A0A0C; color: #0A0A0C; }
         .top-btn.danger:hover { border-color: #C0321A; color: #C0321A; }
+        .feedback-btn {
+          padding: 5px 14px; border-radius: 20px; border: 1px solid #E0DDD6;
+          background: white; cursor: pointer; font-size: 15px;
+          transition: all .15s; line-height: 1;
+        }
+        .feedback-btn:hover { transform: scale(1.1); }
+        .feedback-btn.active-up { background: #3A7A52; border-color: #3A7A52; }
+        .feedback-btn.active-down { background: #C0321A; border-color: #C0321A; }
         @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
         @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
         .msg-in { animation: fadeUp .45s both; }
@@ -247,7 +286,6 @@ export default function App() {
       {/* SIDEBAR */}
       {sidebarOpen && (
         <aside style={{ width: 300, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-          {/* Logo */}
           <div style={{ padding: '28px 24px 20px', borderBottom: '1px solid #E0DDD6' }}>
             <a href="/landing" style={{ textDecoration: 'none' }}>
               <div className="cg" style={{ fontSize: 30, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.02em', lineHeight: 1 }}>
@@ -257,7 +295,6 @@ export default function App() {
             <div className="mono" style={{ fontSize: 11, color: '#BBB', letterSpacing: '.12em', textTransform: 'uppercase', marginTop: 6 }}>Citation-first AI</div>
           </div>
 
-          {/* Ny konversation */}
           <div style={{ padding: '16px 16px 8px' }}>
             <button
               onClick={() => setMessages([])}
@@ -270,7 +307,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Historik */}
           <div style={{ padding: '12px 16px 4px' }}>
             <div className="mono" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', paddingLeft: 4 }}>Tidigare frågor</div>
           </div>
@@ -282,11 +318,7 @@ export default function App() {
               </div>
             ) : (
               history.map(item => (
-                <div
-                  key={item.id}
-                  className="hist-item"
-                  onClick={() => sendMessage(item.question)}
-                >
+                <div key={item.id} className="hist-item" onClick={() => sendMessage(item.question)}>
                   <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#333', lineHeight: 1.4, marginBottom: 4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                     {item.question}
                   </div>
@@ -296,7 +328,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Footer */}
           <div style={{ padding: '16px 20px', borderTop: '1px solid #E0DDD6' }}>
             <div className="mono" style={{ fontSize: 11, color: '#CCC', lineHeight: 1.8 }}>
               IL · ML · BFL · SFL · ABL<br />
@@ -367,10 +398,8 @@ export default function App() {
                   <div key={i} className="msg-in">
                     <div style={{ background: 'white', border: '1px solid #E0DDD6', borderRadius: '4px 16px 16px 16px', padding: '32px 36px' }}>
 
-                      {/* Body */}
                       <div>{formatBody(body)}</div>
 
-                      {/* Förenklat */}
                       {simplified && (
                         <div style={{ marginTop: 24, padding: '22px 26px', background: '#F5F3EE', borderRadius: 10, borderLeft: '3px solid #0A0A0C' }}>
                           <div className="mono" style={{ fontSize: 11, fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase', color: '#AAA', marginBottom: 10 }}>Enkelt uttryckt</div>
@@ -380,7 +409,6 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Exempel */}
                       {example && (
                         <div style={{ marginTop: 12, padding: '22px 26px', background: '#FDF4F3', borderRadius: 10, borderLeft: '3px solid #C0321A' }}>
                           <div className="mono" style={{ fontSize: 11, fontWeight: 500, letterSpacing: '.14em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 10 }}>Praktiskt exempel</div>
@@ -390,35 +418,61 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Footer */}
-                      {(sources || riskLine) && (
-                        <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #F0EDE6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-                          {sources && (
-                            <div className="mono" style={{ fontSize: 12, color: '#BBB', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                              <span style={{ color: '#DDD', letterSpacing: '.06em' }}>KÄLLOR</span>
-                              {sources.replace(/^källor:\s*/i, '').split(',').map((s, idx) => {
-                                const trimmed = s.trim()
-                                const law = trimmed.split(' ')[0]
-                                const url = LAG_URLS[law]
-                                return (
-                                  <span key={idx} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    {idx > 0 && <span style={{ color: '#E8E4DC' }}>·</span>}
-                                    {url
-                                      ? <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#C0321A', textDecoration: 'none' }}>{trimmed}</a>
-                                      : <span style={{ color: '#888' }}>{trimmed}</span>
-                                    }
-                                  </span>
-                                )
-                              })}
-                            </div>
-                          )}
+                      {/* Footer med källor, risk och feedback */}
+                      <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid #F0EDE6', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+                        
+                        {/* Källor */}
+                        {sources && (
+                          <div className="mono" style={{ fontSize: 12, color: '#BBB', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span style={{ color: '#DDD', letterSpacing: '.06em' }}>KÄLLOR</span>
+                            {sources.replace(/^källor:\s*/i, '').split(',').map((s, idx) => {
+                              const trimmed = s.trim()
+                              const law = trimmed.split(' ')[0]
+                              const url = LAG_URLS[law]
+                              return (
+                                <span key={idx} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  {idx > 0 && <span style={{ color: '#E8E4DC' }}>·</span>}
+                                  {url
+                                    ? <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#C0321A', textDecoration: 'none' }}>{trimmed}</a>
+                                    : <span style={{ color: '#888' }}>{trimmed}</span>
+                                  }
+                                </span>
+                              )
+                            })}
+                          </div>
+                        )}
+
+                        {/* Risk + Feedback */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
                           {riskLine && (
-                            <div className="mono" style={{ fontSize: 12, color: riskColor, background: `${riskColor}15`, padding: '5px 14px', borderRadius: 20, letterSpacing: '.06em', flexShrink: 0, whiteSpace: 'nowrap' }}>
+                            <div className="mono" style={{ fontSize: 12, color: riskColor, background: `${riskColor}15`, padding: '5px 14px', borderRadius: 20, letterSpacing: '.06em', whiteSpace: 'nowrap' }}>
                               ● {riskLine.replace(/^risk:\s*/i, '')}
                             </div>
                           )}
+
+                          {/* Feedback-knappar */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {m.feedback == null ? (
+                              <>
+                                <button
+                                  className={`feedback-btn`}
+                                  onClick={() => handleFeedback(i, 1)}
+                                  title="Bra svar"
+                                >👍</button>
+                                <button
+                                  className={`feedback-btn`}
+                                  onClick={() => handleFeedback(i, -1)}
+                                  title="Dåligt svar"
+                                >👎</button>
+                              </>
+                            ) : (
+                              <div className="mono" style={{ fontSize: 11, color: m.feedback === 1 ? '#3A7A52' : '#C0321A', background: m.feedback === 1 ? '#3A7A5215' : '#C0321A15', padding: '4px 12px', borderRadius: 20 }}>
+                                {m.feedback === 1 ? '✓ Tack!' : '✗ Noterat — vi förbättrar det'}
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 )
