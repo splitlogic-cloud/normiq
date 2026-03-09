@@ -17,17 +17,26 @@ function extractRisk(text: string): string {
   return 'LÅG'
 }
 
+function detectQuestionType(q: string): 'bokforing' | 'skatt' | 'generell' {
+  const q2 = q.toLowerCase()
+  const bokforing = ['bokför', 'konter', 'debet', 'kredit', 'konto', 'bokslut', 'k2', 'k3', 'bas-konto', 'periodisera', 'avskrivning', 'balansräkning', 'resultaträkning', 'årsredovisning', 'lager', 'inventarie', 'periodisering', 'upplupna', 'förutbetalda', 'kundförlust', 'inkurans']
+  const skatt = ['skatt', 'moms', 'avdrag', 'f-skatt', 'fåmansbolag', '3:12', 'utdelning', 'förmån', 'representation', 'rot', 'rut', 'kapitalvinst', 'inkomstskatt', 'arbetsgivaravgift', 'egenavgift', 'gränsbelopp']
+  if (bokforing.some(w => q2.includes(w))) return 'bokforing'
+  if (skatt.some(w => q2.includes(w))) return 'skatt'
+  return 'generell'
+}
+
 export async function POST(req: Request) {
   const { messages, sessionId } = await req.json()
   const lastQuestion = messages[messages.length - 1].content
+  const questionType = detectQuestionType(lastQuestion)
 
   let regelkontext = ''
   let sources: string[] = []
   let usedFallback = false
 
   try {
-    const vectorResults = await searchDocuments(lastQuestion, 10)
-
+    const vectorResults = await searchDocuments(lastQuestion, 12)
     if (vectorResults && vectorResults.length > 0 && vectorResults[0].similarity > 0.15) {
       regelkontext = vectorResults
         .map((r: { content: string; metadata: { ref: string; rubrik: string } }) =>
@@ -46,41 +55,66 @@ export async function POST(req: Request) {
     sources = fallback.map(r => r.ref)
   }
 
+  // Komplettera alltid med manuella regler vid bokföringsfrågor
+  if (questionType === 'bokforing') {
+    const manuellaRegler = searchRules(lastQuestion)
+    if (manuellaRegler.length > 0) {
+      const extra = manuellaRegler
+        .filter(r => !sources.includes(r.ref))
+        .map(r => `[${r.ref}] — ${r.rubrik}\n${r.text}`)
+        .join('\n\n')
+      if (extra) regelkontext += '\n\n--- Kompletterande bokföringsregler ---\n\n' + extra
+    }
+  }
+
+  const bokforingExtra = questionType === 'bokforing' ? `
+
+EXTRA INSTRUKTIONER FÖR BOKFÖRINGSFRÅGOR:
+- Ange alltid BAS-kontonummer med kontonamn (t.ex. Debet 7010 Löner, Kredit 2710 Personalskatt)
+- Visa konteringsrader i formatet: Debet XXXX Kontonamn / Kredit XXXX Kontonamn
+- Förklara om K2 och K3 ger olika svar
+- Ange om det finns skattemässig skillnad mot redovisningsmässig behandling
+- Var alltid konkret med siffror i exemplet` : ''
+
   const fallbackWarning = usedFallback
-    ? `\n\nOBS: Svaret baseras på det manuella regelindexet. Verifiera med aktuell lagtext. Sätt Risk: MEDEL om frågan är enkel, annars HÖG.`
+    ? `\n\nOBS: Svaret baseras på det manuella regelindexet. Verifiera med aktuell lagtext.`
     : ''
 
-  const system = `Du är Normiq, en professionell AI-assistent för svensk skatt och redovisning.
+  const system = `Du är Normiq, en professionell AI-assistent för svensk skatt, bokföring och redovisning. Du hjälper redovisningskonsulter, revisorer och företagare med korrekta svar baserade på svenska lagar och regler.
 
-Du har tillgång till följande regeltext från svenska lagar:
+Du har tillgång till följande regeltext:
 
-${regelkontext}${fallbackWarning}
+${regelkontext}${fallbackWarning}${bokforingExtra}
 
-INSTRUKTIONER:
-1. Ge ett juridiskt precist svar baserat på regelkontexten ovan
-2. Citera alltid med exakt referens i formatet [IL 57 kap. 10 §]
-3. Om frågan berör 3:12-regler eller fåmansbolag — förklara gränsbelopp, schablonmetod vs huvudregel
-4. Strukturera alltid svaret i tre delar med exakt dessa separatorer:
+SVARSSTRUKTUR — använd alltid exakt dessa separatorer:
 
-## [Rubrik]
+## [Tydlig rubrik]
 
-[Juridiskt svar med källhänvisningar]
+[Korrekt svar med källhänvisningar i formatet [IL 16 kap. 2 §]]
 
 ---FÖRENKLAT---
-Enkelt uttryckt: [2-3 meningar i plain svenska]
+Enkelt uttryckt: [2-3 meningar på enkel svenska]
 
 ---EXEMPEL---
-Exempel: [Konkret räkneexempel med siffror]
+Exempel: [Konkret exempel med siffror. Vid bokföringsfrågor: visa konteringsrader]
 
-Källor: [kommaseparerad lista med refs]
-Risk: LÅG / MEDEL / HÖG — [kort motivering]
+Källor: [kommaseparerad lista]
+Risk: LÅG — [motivering]
 
-5. Om svaret inte finns i regelkontexten — säg det explicit och sätt Risk: HÖG
-6. Svara alltid på svenska`
+VIKTIGA REGLER:
+1. Risk-raden ska ALLTID vara absolut sista raden i svaret
+2. Risk börjar alltid med exakt "Risk: " följt av LÅG, MEDEL eller HÖG och ett tankstreck
+3. Använd ALDRIG bullet points (•) eller bindestreck (-) som prefix på Risk-raden
+4. Inga rader efter Risk-raden
+5. Citera alltid med exakt lagrum [IL 57 kap. 10 §]
+6. Vid bokföringsfrågor: inkludera alltid BAS-kontonummer
+7. Om svaret saknas i regelkontexten: säg det explicit och sätt Risk: HÖG
+8. Svara alltid på svenska
+9. Var konkret — undvik vaga svar`
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
-    max_tokens: 1500,
+    max_tokens: 2000,
     system,
     messages: messages.map((m: { role: string; content: string }) => ({
       role: m.role,
