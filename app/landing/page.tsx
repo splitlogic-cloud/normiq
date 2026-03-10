@@ -1,192 +1,279 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 export default function Landing() {
-  const [scrolled, setScrolled] = useState(false)
+  const [openFaq, setOpenFaq] = useState<number | null>(null)
+  const [billingAnnual, setBillingAnnual] = useState(false)
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40)
-    window.addEventListener('scroll', onScroll)
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+  const faqs = [
+    {
+      q: 'Ersätter Normiq en skattejurist?',
+      a: 'Nej. Normiq är ett beslutsstöd som hjälper dig att hitta relevanta källor snabbare. Slutlig bedömning görs alltid av användaren. Normiq är byggt för att underlätta research och dokumentation — inte för att ersätta professionellt omdöme.',
+    },
+    {
+      q: 'Vilka källor bygger Normiq på?',
+      a: 'Normiq är byggt för svenska skatte- och redovisningsfrågor och använder strukturerade regelkällor som lagtext (IL, ML, BFL, SFL, ABL), Skatteverkets vägledningar och normgivning från BFN. Källorna uppdateras löpande.',
+    },
+    {
+      q: 'Hur skiljer sig Normiq från generell AI?',
+      a: 'Generella AI-verktyg försöker formulera ett svar som låter rätt. Normiq hittar först relevanta källor, verifierar mot dem, och förklarar sedan vad de faktiskt säger. AI:n skriver inte svaren fritt — den förklarar källorna.',
+    },
+    {
+      q: 'Kan jag använda Normiq i ett byråteam?',
+      a: 'Ja. Pro-planen täcker upp till 10 användare och är designad för att team ska kunna arbeta konsekvent. Enterprise-planen är anpassad för större organisationer med högre krav på integration och styrning.',
+    },
+    {
+      q: 'Vad händer med mina frågor och svar?',
+      a: 'Frågor och svar loggas för att skapa spårbarhet i ditt eget arbetsflöde. Din data används inte för att träna externa AI-modeller. Enterprise-planer kan förhandla ytterligare dataisolering.',
+    },
+  ]
 
   return (
-    <div style={{ background: '#F5F3EE', fontFamily: 'Georgia, serif', overflowX: 'hidden' }}>
+    <div style={{ background: '#F5F3EE', minHeight: '100vh', fontFamily: 'Georgia, serif' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Mono:wght@300;400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         .cg { font-family: 'Cormorant Garamond', Georgia, serif; }
         .mono { font-family: 'DM Mono', monospace; }
-        @keyframes fadeUp { from { opacity:0; transform:translateY(40px); } to { opacity:1; transform:none; } }
-        @keyframes ticker { from{transform:translateX(0)} to{transform:translateX(-50%)} }
-        .fu0{animation:fadeUp 1s both}
-        .fu1{animation:fadeUp 1s .2s both}
-        .fu2{animation:fadeUp 1s .4s both}
-        .fu3{animation:fadeUp 1s .6s both}
-        .btn-p {
-          display:inline-block; font-family:'DM Mono',monospace; font-size:14px;
-          font-weight:500; letter-spacing:.12em; text-transform:uppercase;
-          color:#F5F3EE; background:#0A0A0C; padding:22px 48px;
-          text-decoration:none; cursor:pointer;
-          transition:background .2s,transform .15s,box-shadow .2s;
+        .nav-link {
+          font-family: 'DM Mono', monospace; font-size: 11px; color: #888;
+          text-decoration: none; letter-spacing: .08em; text-transform: uppercase;
+          transition: color .2s;
         }
-        .btn-p:hover { background:#C0321A; transform:translateY(-2px); box-shadow:0 12px 40px rgba(192,50,26,.3); }
-        .btn-g {
-          display:inline-block; font-family:'DM Mono',monospace; font-size:14px;
-          letter-spacing:.08em; text-transform:uppercase; color:#666;
-          text-decoration:none; border-bottom:2px solid #CCC;
-          padding-bottom:3px; transition:color .2s,border-color .2s;
+        .nav-link:hover { color: #0A0A0C; }
+        .btn-primary {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: #0A0A0C; color: white; border: none; cursor: pointer;
+          font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: .08em;
+          text-transform: uppercase; padding: 14px 28px; border-radius: 4px;
+          text-decoration: none; transition: background .2s, transform .15s;
         }
-        .btn-g:hover { color:#0A0A0C; border-color:#0A0A0C; }
-        .nav-a {
-          font-family:'DM Mono',monospace; font-size:11px; letter-spacing:.1em;
-          text-transform:uppercase; color:#888; text-decoration:none; transition:color .2s;
+        .btn-primary:hover { background: #C0321A; transform: translateY(-1px); }
+        .btn-secondary {
+          display: inline-flex; align-items: center; gap: 8px;
+          background: transparent; color: #0A0A0C;
+          border: 1px solid #C8C4BC; cursor: pointer;
+          font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: .08em;
+          text-transform: uppercase; padding: 14px 28px; border-radius: 4px;
+          text-decoration: none; transition: all .2s;
         }
-        .nav-a:hover { color:#0A0A0C; }
-        .fc {
-          padding:64px; border:1px solid #E0DDD6; background:white;
-          transition:border-color .3s,box-shadow .3s,transform .3s;
+        .btn-secondary:hover { border-color: #0A0A0C; }
+        .feature-card {
+          background: white; border: 1px solid #E0DDD6; border-radius: 8px;
+          padding: 28px; transition: box-shadow .2s, transform .2s;
         }
-        .fc:hover { border-color:#C0321A; box-shadow:0 12px 60px rgba(192,50,26,.1); transform:translateY(-3px); }
-        .pc { padding:64px 56px; border:1px solid #E0DDD6; background:white; transition:all .3s; }
-        .pc:hover { border-color:#0A0A0C; box-shadow:0 20px 80px rgba(0,0,0,.1); }
-        .faq { border-bottom:1px solid #E0DDD6; padding:40px 0; cursor:pointer; }
-        .faq:first-child { border-top:1px solid #E0DDD6; }
-        .ticker-wrap { animation:ticker 32s linear infinite; display:flex; gap:100px; white-space:nowrap; }
-        .ticker-wrap:hover { animation-play-state:paused; }
-        @media(max-width:900px){
-          .feat-grid{grid-template-columns:1fr !important;}
-          .who-grid{grid-template-columns:1fr 1fr !important;}
-          .price-grid{grid-template-columns:1fr !important;}
-          nav .nav-links{display:none !important;}
-          .hero-inner{padding:100px 32px 80px !important;}
-          .section-pad{padding:100px 32px !important;}
-          .feat-wrap{grid-template-columns:1fr !important; gap:64px !important;}
+        .feature-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,.06); transform: translateY(-2px); }
+        .price-card {
+          background: white; border: 1px solid #E0DDD6; border-radius: 8px;
+          padding: 36px 32px; position: relative; transition: box-shadow .2s;
         }
+        .price-card.featured { border-color: #0A0A0C; border-width: 1.5px; }
+        .price-card:hover { box-shadow: 0 8px 32px rgba(0,0,0,.08); }
+        .faq-item { border-bottom: 1px solid #E0DDD6; overflow: hidden; }
+        .faq-btn {
+          width: 100%; background: none; border: none; cursor: pointer;
+          padding: 22px 0; display: flex; justify-content: space-between;
+          align-items: center; text-align: left; transition: color .2s;
+        }
+        .faq-btn:hover .faq-q { color: #C0321A; }
+        .audience-card {
+          padding: 36px 32px; border-left: 2px solid #E0DDD6; transition: border-color .2s;
+        }
+        .audience-card:hover { border-color: #C0321A; }
+        .toggle-pill {
+          display: inline-flex; background: #E8E5DF; border-radius: 30px; padding: 4px; gap: 2px;
+        }
+        .toggle-opt {
+          padding: 7px 18px; border-radius: 24px; border: none;
+          font-family: 'DM Mono', monospace; font-size: 11px;
+          letter-spacing: .06em; text-transform: uppercase;
+          cursor: pointer; transition: all .2s;
+          background: transparent; color: #888;
+        }
+        .toggle-opt.active { background: white; color: #0A0A0C; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+        .flow-step {
+          display: flex; flex-direction: column; align-items: center; gap: 12; flex: 1;
+        }
+        .flow-arrow {
+          color: #C0321A; font-family: 'DM Mono', monospace; font-size: 20px;
+          padding: 0 8px; margin-top: 24px; flex-shrink: 0;
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(24px); }
+          to { opacity: 1; transform: none; }
+        }
+        .hero-anim   { animation: fadeUp .7s both; }
+        .hero-anim-2 { animation: fadeUp .7s .15s both; }
+        .hero-anim-3 { animation: fadeUp .7s .3s  both; }
+        .hero-anim-4 { animation: fadeUp .7s .45s both; }
       `}</style>
 
       {/* NAV */}
-      <nav style={{
-        position:'fixed', top:0, left:0, right:0, zIndex:100,
-        display:'flex', justifyContent:'space-between', alignItems:'center',
-        padding:'22px 80px',
-        background: scrolled ? 'rgba(245,243,238,0.95)' : 'transparent',
-        backdropFilter: scrolled ? 'blur(16px)' : 'none',
-        borderBottom: scrolled ? '1px solid #E0DDD6' : '1px solid transparent',
-        transition:'all .3s'
-      }}>
-        <div className="cg" style={{fontSize:30,fontWeight:600,color:'#0A0A0C',letterSpacing:'-.02em'}}>
-          Normi<span style={{color:'#C0321A'}}>q</span>
-        </div>
-        <div className="nav-links" style={{display:'flex',gap:44,alignItems:'center'}}>
-          <a href="#funktioner" className="nav-a">Funktioner</a>
-          <a href="#priser" className="nav-a">Priser</a>
-          <a href="#faq" className="nav-a">FAQ</a>
-          <a href="/login" className="nav-a">Logga in</a>
-          <a href="/register" className="btn-p" style={{padding:'12px 28px',fontSize:12}}>Kom igång gratis</a>
+      <nav style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(245,243,238,.92)', backdropFilter: 'blur(12px)', borderBottom: '1px solid #E0DDD6', padding: '0 48px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', alignItems: 'center', height: 64, gap: 40 }}>
+          <a href="/" style={{ textDecoration: 'none' }}>
+            <span className="cg" style={{ fontSize: 26, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.02em' }}>
+              Normi<span style={{ color: '#C0321A' }}>q</span>
+            </span>
+          </a>
+          <div style={{ flex: 1 }} />
+          <a href="#hur-det-fungerar" className="nav-link">Hur det fungerar</a>
+          <a href="#funktioner" className="nav-link">Funktioner</a>
+          <a href="#priser" className="nav-link">Priser</a>
+          <a href="#faq" className="nav-link">FAQ</a>
+          <a href="/login" className="nav-link">Logga in</a>
+          <a href="/register" className="btn-primary" style={{ padding: '10px 20px', fontSize: 11 }}>Testa gratis</a>
         </div>
       </nav>
 
       {/* HERO */}
-      <section style={{minHeight:'100vh',display:'flex',alignItems:'center',borderBottom:'1px solid #E0DDD6',paddingTop:80,position:'relative',overflow:'hidden'}}>
-        <div style={{position:'absolute',top:0,right:0,width:'40%',height:'100%',background:'linear-gradient(135deg,transparent 0%,rgba(192,50,26,.03) 100%)',pointerEvents:'none'}}/>
-        <div className="hero-inner" style={{padding:'120px 140px 120px',maxWidth:1300,width:'100%'}}>
-
-          <div className="mono fu0" style={{fontSize:13,letterSpacing:'.16em',textTransform:'uppercase',color:'#C0321A',marginBottom:48,display:'flex',alignItems:'center',gap:14}}>
-            <span style={{display:'block',width:40,height:1.5,background:'#C0321A'}}/>
-            Sveriges första citation-first AI för skatt & redovisning
+      <section style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 48px 88px' }}>
+        <div style={{ maxWidth: 800 }}>
+          <div className="mono hero-anim" style={{ fontSize: 11, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ display: 'block', width: 28, height: 1, background: '#C0321A' }} />
+            Söksystem för svenska skatte- och redovisningsregler
           </div>
 
-          <h1 className="cg fu1" style={{fontSize:'clamp(96px,12vw,160px)',lineHeight:.88,letterSpacing:'-.04em',color:'#0A0A0C'}}>
-            Sluta gissa.
-          </h1>
-          <h1 className="cg fu1" style={{fontSize:'clamp(96px,12vw,160px)',lineHeight:.88,letterSpacing:'-.04em',color:'#0A0A0C',fontStyle:'italic'}}>
-            Börja bevisa.
-          </h1>
-          <h1 className="cg fu2" style={{fontSize:'clamp(96px,12vw,160px)',lineHeight:.88,letterSpacing:'-.04em',fontStyle:'italic',marginBottom:0}}>
-            <span style={{color:'#C0321A'}}>Med källan.</span>
+          <h1 className="cg hero-anim-2" style={{ fontSize: 'clamp(48px, 6vw, 82px)', lineHeight: .96, letterSpacing: '-.03em', color: '#0A0A0C', marginBottom: 28 }}>
+            AI:n skriver inte svaren.{' '}
+            <em style={{ fontStyle: 'italic', color: '#C0321A' }}>AI:n förklarar källorna.</em>
           </h1>
 
-          <p className="mono fu2" style={{fontSize:20,color:'#666',marginTop:64,maxWidth:700,lineHeight:2.1}}>
-            Normiq ger dig exakta svar på svenska skattefrågor — med lagrum,
-            paragrafnummer och riskklassning i varje svar. Inte AI-gissningar.
-            Verifierbar juridik.
+          <p className="mono hero-anim-3" style={{ fontSize: 15, color: '#666', lineHeight: 1.9, marginBottom: 20, maxWidth: 600 }}>
+            Normiq hittar relevanta lagrum och regelkällor för din fråga — och förklarar vad de faktiskt säger. Som Google för skatte- och redovisningsregler, men med källhänvisning och riskbedömning i varje svar.
           </p>
 
-          <div className="fu3" style={{marginTop:72,display:'flex',alignItems:'center',gap:40,flexWrap:'wrap'}}>
-            <a href="/register" className="btn-p" style={{fontSize:15,padding:'24px 56px'}}>Testa gratis i 14 dagar →</a>
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              <a href="#funktioner" className="btn-g" style={{fontSize:15}}>Se hur det fungerar</a>
-              <span className="mono" style={{fontSize:12,color:'#AAA',letterSpacing:'.06em'}}>Inget kreditkort krävs</span>
-            </div>
+          <p className="mono hero-anim-3" style={{ fontSize: 13, color: '#AAA', lineHeight: 1.9, marginBottom: 44, maxWidth: 560 }}>
+            Byggt för redovisningsbyråer, skattejurister och ekonomiteam som behöver veta vad svaret bygger på.
+          </p>
+
+          <div className="hero-anim-4" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 48 }}>
+            <a href="/register" className="btn-primary">
+              Testa gratis
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+            </a>
+            <a href="mailto:hej@normiq.se" className="btn-secondary">Boka demo</a>
           </div>
 
-          <div className="fu3" style={{marginTop:64,display:'flex',gap:12,flexWrap:'wrap',alignItems:'center'}}>
-            <span className="mono" style={{fontSize:12,color:'#AAA',letterSpacing:'.06em',marginRight:4}}>Täcker:</span>
-            {['IL','ML','SFL','BFL','ABL','BFN','SKV'].map(t=>(
-              <span key={t} style={{fontSize:13,letterSpacing:'.1em',color:'#777',background:'#EDEAE3',padding:'7px 16px',borderRadius:4,fontFamily:'DM Mono,monospace'}}>{t}</span>
-            ))}
+          <div className="hero-anim-4 mono" style={{ fontSize: 11, color: '#AAA', letterSpacing: '.06em', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+            <span>✓ Källbaserade svar</span>
+            <span style={{ color: '#E0DDD6' }}>·</span>
+            <span>✓ Riskklassning före svar</span>
+            <span style={{ color: '#E0DDD6' }}>·</span>
+            <span>✓ Verifierat mot lagtext</span>
+            <span style={{ color: '#E0DDD6' }}>·</span>
+            <span>✓ IL · ML · BFL · SFL · ABL</span>
           </div>
         </div>
       </section>
 
-      {/* TICKER */}
-      <div style={{background:'#0A0A0C',padding:'20px 0',overflow:'hidden',borderBottom:'1px solid #1a1a1e'}}>
-        <div className="ticker-wrap">
-          {[...Array(2)].map((_,ri)=>
-            ['Inkomstskattelagen','Mervärdesskattelagen','Skatteförfarandelagen','Bokföringslagen','Aktiebolagslagen','BFN-normer','SKV Ställningstaganden','Rättsfall & Prejudikat'].map((t,i)=>(
-              <span key={`${ri}-${i}`} className="mono" style={{fontSize:13,letterSpacing:'.12em',textTransform:'uppercase',color:i%4===0?'#C0321A':'#3a3a3e'}}>{t}</span>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* PROBLEM */}
-      <section className="section-pad" style={{padding:'180px 140px',background:'#0A0A0C',borderBottom:'1px solid #1a1a1e'}}>
-        <div style={{maxWidth:1200,margin:'0 auto'}}>
-          <div className="mono" style={{fontSize:13,letterSpacing:'.14em',textTransform:'uppercase',color:'#C0321A',marginBottom:40,textAlign:'center'}}>Problemet</div>
-          <h2 className="cg" style={{fontSize:'clamp(56px,7vw,104px)',lineHeight:1.0,color:'white',textAlign:'center',letterSpacing:'-.03em',marginBottom:96}}>
-            "AI sa att det var okej."<br/>
-            <em style={{color:'#C0321A'}}>Skatteverket höll inte med.</em>
+      {/* HUR DET FUNGERAR — flödesdiagram */}
+      <section id="hur-det-fungerar" style={{ background: 'white', borderTop: '1px solid #E0DDD6', borderBottom: '1px solid #E0DDD6', padding: '88px 48px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 16 }}>Hur det fungerar</div>
+          <h2 className="cg" style={{ fontSize: 'clamp(34px, 4vw, 52px)', color: '#0A0A0C', marginBottom: 16, letterSpacing: '-.02em' }}>
+            Från fråga till verifierbart svar
           </h2>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:1,background:'#1a1a1e'}}>
+          <p className="mono" style={{ fontSize: 13, color: '#666', lineHeight: 1.85, maxWidth: 540, marginBottom: 64 }}>
+            Normiq följer en strikt ordning. Källorna hittas och riskklassas innan AI:n formulerar ett enda ord.
+          </p>
+
+          {/* Flöde */}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, overflowX: 'auto', paddingBottom: 8 }}>
             {[
-              {n:'74%',text:'av revisorer uppger att de inte litar på AI-svar utan källhänvisning.'},
-              {n:'2–3h',text:'spenderar en genomsnittlig konsult per vecka på att leta upp och verifiera regelinformation.'},
-              {n:'0 kr',text:'är värdet av ett AI-svar du inte kan bevisa inför Skatteverket eller din klient.'},
-            ].map((s,i)=>(
-              <div key={i} style={{padding:'72px 56px',background:'#0A0A0C'}}>
-                <div className="cg" style={{fontSize:'clamp(64px,7vw,96px)',color:'#C0321A',lineHeight:1,letterSpacing:'-.03em',marginBottom:28}}>{s.n}</div>
-                <div className="mono" style={{fontSize:18,color:'#555',lineHeight:1.9}}>{s.text}</div>
+              {
+                num: '01',
+                title: 'Din fråga',
+                desc: 'Du ställer en fråga om skatt, moms eller redovisning.',
+                color: '#F5F3EE',
+              },
+              {
+                num: '02',
+                title: 'Retrieval',
+                desc: 'Normiq söker i strukturerade regelkällor och identifierar relevanta lagrum.',
+                color: '#F5F3EE',
+              },
+              {
+                num: '03',
+                title: 'Riskklassning',
+                desc: 'Frågan och källorna bedöms — LÅG, MEDEL eller HÖG — innan AI:n anropas.',
+                color: '#FDF4F3',
+                highlight: true,
+              },
+              {
+                num: '04',
+                title: 'AI förklarar källorna',
+                desc: 'AI:n sammanfattar vad de hittade källorna faktiskt säger. Inte fritt — bara källorna.',
+                color: '#F5F3EE',
+              },
+              {
+                num: '05',
+                title: 'Verifierat svar',
+                desc: 'Svaret stäms mot källorna. Du får lagrum, riskbedömning och länk till originaltexten.',
+                color: '#F0F7F3',
+              },
+            ].map((step, i, arr) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'flex-start', flex: 1, minWidth: 160 }}>
+                <div style={{ flex: 1, background: step.color, border: `1px solid ${step.highlight ? '#C0321A' : '#E0DDD6'}`, borderRadius: 8, padding: '24px 20px' }}>
+                  <div className="mono" style={{ fontSize: 11, color: step.highlight ? '#C0321A' : '#CCC', marginBottom: 10, letterSpacing: '.06em' }}>{step.num}</div>
+                  <div className="cg" style={{ fontSize: 18, fontWeight: 600, color: '#0A0A0C', marginBottom: 8, lineHeight: 1.2 }}>{step.title}</div>
+                  <div className="mono" style={{ fontSize: 12, color: '#666', lineHeight: 1.75 }}>{step.desc}</div>
+                </div>
+                {i < arr.length - 1 && (
+                  <div style={{ padding: '32px 8px 0', color: '#C0321A', fontFamily: 'DM Mono, monospace', fontSize: 16, flexShrink: 0 }}>→</div>
+                )}
               </div>
             ))}
           </div>
+
+          {/* Kärnbudskap */}
+          <div style={{ marginTop: 48, padding: '28px 36px', background: '#0A0A0C', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 32, flexWrap: 'wrap' }}>
+            <div className="cg" style={{ fontSize: 26, color: 'white', letterSpacing: '-.01em', lineHeight: 1.2 }}>
+              "Google för skatte- och redovisningsregler."
+            </div>
+            <div className="mono" style={{ fontSize: 12, color: '#888', lineHeight: 1.8, maxWidth: 360 }}>
+              Normiq är inte en AI-rådgivare. Det är ett söksystem som visar vad reglerna faktiskt säger — med källhänvisning i varje svar.
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* SOLUTION */}
-      <section className="section-pad" style={{padding:'180px 140px',borderBottom:'1px solid #E0DDD6',background:'#FAFAF8'}}>
-        <div style={{maxWidth:1100,margin:'0 auto',textAlign:'center'}}>
-          <div className="mono" style={{fontSize:13,letterSpacing:'.14em',textTransform:'uppercase',color:'#C0321A',marginBottom:40}}>Lösningen</div>
-          <h2 className="cg" style={{fontSize:'clamp(56px,7vw,100px)',lineHeight:1.0,color:'#0A0A0C',letterSpacing:'-.03em',marginBottom:56}}>
-            Varje svar har en adress.<br/><em>Varje källa går att klicka.</em>
-          </h2>
-          <p className="mono" style={{fontSize:20,color:'#666',lineHeight:2.1,maxWidth:780,margin:'0 auto 80px'}}>
-            Normiq är inte ett chatverktyg med skattekunskap. Det är ett compliance-verktyg
-            byggt kring ett levande regelindex — som aldrig lämnar ett svar utan att visa
-            varifrån det kom.
-          </p>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:56,textAlign:'left'}}>
+      {/* PROBLEMET */}
+      <section style={{ padding: '88px 48px', maxWidth: 1100, margin: '0 auto' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
+          <div>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 16 }}>Problemet med generell AI</div>
+            <h2 className="cg" style={{ fontSize: 'clamp(32px, 3.5vw, 48px)', color: '#0A0A0C', marginBottom: 20, letterSpacing: '-.02em', lineHeight: 1.1 }}>
+              När svaret måste gå att försvara räcker det inte att det låter rätt
+            </h2>
+            <p className="mono" style={{ fontSize: 13, color: '#666', lineHeight: 1.9, marginBottom: 16 }}>
+              Generella AI-verktyg formulerar svar som låter övertygande — men du kan inte se vad de bygger på. I skatte- och redovisningsfrågor är det ett problem.
+            </p>
+            <p className="mono" style={{ fontSize: 13, color: '#666', lineHeight: 1.9 }}>
+              Normiq visar källan innan det visar svaret.
+            </p>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
-              {icon:'[IL 16 kap. 2 §]',title:'Exakt lagrum',desc:'Alltid paragrafnummer och kapitel. Klicka för att komma direkt till riksdagen.se.'},
-              {icon:'● LÅG RISK',title:'Riskklassning',desc:'Automatisk bedömning om frågan är enkel, komplex eller kräver juridisk expertis.'},
-              {icon:'AUDIT LOG',title:'Auditlogg',desc:'Varje fråga och svar sparas. Visa klienten, styrelsen eller Skatteverket.'},
-            ].map(c=>(
-              <div key={c.title} style={{borderTop:'3px solid #C0321A',paddingTop:36}}>
-                <div className="mono" style={{fontSize:13,color:'#C0321A',marginBottom:24,letterSpacing:'.06em'}}>{c.icon}</div>
-                <div className="cg" style={{fontSize:36,color:'#0A0A0C',marginBottom:20,lineHeight:1.15}}>{c.title}</div>
-                <div className="mono" style={{fontSize:17,color:'#888',lineHeight:1.9}}>{c.desc}</div>
+              { bad: 'Generell AI', text: 'Formulerar ett svar som låter rätt — utan källhänvisning.' },
+              { bad: 'Generell AI', text: 'Du kan inte se om svaret bygger på lagtext eller träningsdata.' },
+              { bad: 'Generell AI', text: 'Ingen riskbedömning — alla svar presenteras med samma säkerhet.' },
+            ].map((item, i) => (
+              <div key={i} style={{ display: 'flex', gap: 16, padding: '18px 22px', background: 'white', border: '1px solid #E0DDD6', borderRadius: 8 }}>
+                <span style={{ color: '#C0321A', flexShrink: 0, fontFamily: 'DM Mono, monospace', fontSize: 14, marginTop: 1 }}>✕</span>
+                <span className="mono" style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>{item.text}</span>
+              </div>
+            ))}
+            <div style={{ height: 8 }} />
+            {[
+              'Normiq visar vilket lagrum svaret bygger på.',
+              'Riskklassning görs mot källorna — innan AI:n svarar.',
+              'Du kan klicka direkt till originaltexten och verifiera själv.',
+            ].map((text, i) => (
+              <div key={i} style={{ display: 'flex', gap: 16, padding: '18px 22px', background: '#F0F7F3', border: '1px solid #D4EBE0', borderRadius: 8 }}>
+                <span style={{ color: '#3A7A52', flexShrink: 0, fontFamily: 'DM Mono, monospace', fontSize: 14, marginTop: 1 }}>✓</span>
+                <span className="mono" style={{ fontSize: 13, color: '#333', lineHeight: 1.7 }}>{text}</span>
               </div>
             ))}
           </div>
@@ -194,116 +281,126 @@ export default function Landing() {
       </section>
 
       {/* FEATURES */}
-      <section id="funktioner" className="section-pad" style={{padding:'180px 140px',borderBottom:'1px solid #E0DDD6'}}>
-        <div style={{maxWidth:1400,margin:'0 auto'}}>
-          <div className="feat-wrap" style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:120,alignItems:'start'}}>
-            <div style={{position:'sticky',top:120}}>
-              <div className="mono" style={{fontSize:13,letterSpacing:'.12em',textTransform:'uppercase',color:'#C0321A',marginBottom:32}}>Funktioner</div>
-              <h2 className="cg" style={{fontSize:'clamp(52px,5vw,80px)',lineHeight:1.05,letterSpacing:'-.02em',color:'#0A0A0C',marginBottom:36}}>
-                Allt du<br/>behöver.<br/><em>Inget du<br/>inte behöver.</em>
-              </h2>
-              <p className="mono" style={{fontSize:17,color:'#888',lineHeight:1.9}}>
-                Normiq är byggt specifikt för svensk skatt och redovisning. Inte ett generellt AI-verktyg. Ett professionellt arbetsverktyg.
-              </p>
-            </div>
-            <div className="feat-grid" style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:1,background:'#E0DDD6'}}>
-              {[
-                {n:'01',t:'Citation-first svar',d:'Varje svar innehåller exakta lagrum och paragrafnummer. Om källan inte finns — ges inget svar.'},
-                {n:'02',t:'Tre svarsnivåer',d:'Juridiskt exakt för juristen. Förenklat för konsulten. Räkneexempel för klienten. Alltid alla tre.'},
-                {n:'03',t:'Automatisk riskklassning',d:'LÅG, MEDEL eller HÖG — baserat på rättspraxis och regelkomplexitet. Aldrig en gissning.'},
-                {n:'04',t:'Komplett auditlogg',d:'Alla frågor loggas med timestamp, källa och riskbedömning. Perfekt dokumentation.'},
-                {n:'05',t:'Levande regelindex',d:'IL, ML, SFL, BFL, ABL, BFN och SKV. Automatiskt uppdaterat. Alltid aktuellt.'},
-                {n:'06',t:'Klickbara källhänvisningar',d:'Varje paragraf är en aktiv länk till riksdagen.se eller skatteverket.se. Verifiera direkt.'},
-              ].map(f=>(
-                <div key={f.n} className="fc">
-                  <div className="mono" style={{fontSize:13,color:'#C0321A',marginBottom:28,letterSpacing:'.08em'}}>{f.n}</div>
-                  <div className="cg" style={{fontSize:40,marginBottom:24,color:'#0A0A0C',lineHeight:1.1}}>{f.t}</div>
-                  <div className="mono" style={{fontSize:18,color:'#888',lineHeight:1.9}}>{f.d}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* FOR WHO */}
-      <section className="section-pad" style={{padding:'180px 140px',background:'#0A0A0C',borderBottom:'1px solid #1a1a1e'}}>
-        <div style={{maxWidth:1400,margin:'0 auto'}}>
-          <div className="mono" style={{fontSize:13,letterSpacing:'.12em',textTransform:'uppercase',color:'#C0321A',marginBottom:28,textAlign:'center'}}>För vem</div>
-          <h2 className="cg" style={{fontSize:'clamp(56px,7vw,100px)',lineHeight:.95,color:'white',textAlign:'center',marginBottom:16,letterSpacing:'-.03em'}}>
-            Byggt för dem som
+      <section id="funktioner" style={{ background: 'white', borderTop: '1px solid #E0DDD6', borderBottom: '1px solid #E0DDD6', padding: '88px 48px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 16 }}>Funktioner</div>
+          <h2 className="cg" style={{ fontSize: 'clamp(32px, 3.5vw, 48px)', color: '#0A0A0C', marginBottom: 12, letterSpacing: '-.02em' }}>
+            Det du behöver för att arbeta snabbare och säkrare
           </h2>
-          <h2 className="cg" style={{fontSize:'clamp(56px,7vw,100px)',lineHeight:.95,textAlign:'center',marginBottom:100,letterSpacing:'-.03em',fontStyle:'italic'}}>
-            <em style={{color:'#C0321A'}}>inte har råd att ha fel.</em>
-          </h2>
-          <div className="who-grid" style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:1,background:'#1a1a1e'}}>
+          <p className="mono" style={{ fontSize: 13, color: '#888', marginBottom: 52, maxWidth: 480, lineHeight: 1.8 }}>
+            Varje funktion är byggd för professionella team som arbetar med kvalitet varje dag.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {[
-              {icon:'⚖',t:'Redovisnings-konsulter',d:'Halvera din researchtid. Dokumentera rättsstödet. Fakturera fler timmar med bättre marginaler.'},
-              {icon:'§',t:'Skattejurister',d:'Snabb och verifierbar förstaanalys. Låt Normiq göra grundjobbet — du gör bedömningen.'},
-              {icon:'📊',t:'CFO:er & ekonomichefer',d:'Bygg intern compliance-kultur med automatisk dokumentation och auditspår för styrelsen.'},
-              {icon:'🏢',t:'Redovisnings-byråer',d:'Ge hela teamet samma kvalitet. Konsekvent, spårbart och skalbart från dag ett.'},
-            ].map(a=>(
-              <div key={a.t} style={{padding:'72px 48px',background:'#0A0A0C',transition:'background .2s',cursor:'default'}}
-                onMouseEnter={e=>(e.currentTarget.style.background='#0f0f13')}
-                onMouseLeave={e=>(e.currentTarget.style.background='#0A0A0C')}>
-                <div style={{fontSize:44,marginBottom:32}}>{a.icon}</div>
-                <div className="cg" style={{fontSize:34,color:'white',marginBottom:24,lineHeight:1.1}}>{a.t}</div>
-                <div className="mono" style={{fontSize:18,color:'#4a4a4e',lineHeight:1.9}}>{a.d}</div>
+              { icon: '§', title: 'Källbaserade svar', desc: 'Varje svar hänvisar till det lagrum det bygger på. Du ser alltid var svaret kommer ifrån.' },
+              { icon: '◈', title: 'Riskklassning före svar', desc: 'Frågan bedöms mot källorna innan AI:n svarar. LÅG, MEDEL eller HÖG — med motivering.' },
+              { icon: '▦', title: 'Auditlogg', desc: 'Frågor, svar och källor sparas automatiskt för spårbarhet och intern dokumentation.' },
+              { icon: '↗', title: 'Klickbara lagrum', desc: 'Gå direkt till originaltexten när du vill verifiera. Varje lagrum är länkat.' },
+              { icon: '⟳', title: 'Levande regelindex', desc: 'Strukturerat index över IL, ML, BFL, SFL, ABL och SKV-material. Uppdateras löpande.' },
+              { icon: '⊞', title: 'Byggt för team', desc: 'Konsekvent kvalitet och spårbarhet oavsett vem i teamet som ställer frågan.' },
+            ].map((f, i) => (
+              <div key={i} className="feature-card">
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 22, color: '#C0321A', marginBottom: 14 }}>{f.icon}</div>
+                <div className="cg" style={{ fontSize: 20, fontWeight: 600, color: '#0A0A0C', marginBottom: 8 }}>{f.title}</div>
+                <div className="mono" style={{ fontSize: 13, color: '#666', lineHeight: 1.8 }}>{f.desc}</div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* PRICING */}
-      <section id="priser" className="section-pad" style={{padding:'180px 140px',borderBottom:'1px solid #E0DDD6'}}>
-        <div style={{maxWidth:1300,margin:'0 auto'}}>
-          <div className="mono" style={{fontSize:13,letterSpacing:'.12em',textTransform:'uppercase',color:'#C0321A',marginBottom:28,textAlign:'center'}}>Priser</div>
-          <h2 className="cg" style={{fontSize:'clamp(56px,7vw,100px)',lineHeight:1.0,color:'#0A0A0C',textAlign:'center',marginBottom:24,letterSpacing:'-.03em'}}>
-            Transparent prissättning
-          </h2>
-          <p className="mono" style={{fontSize:20,color:'#888',textAlign:'center',marginBottom:100,lineHeight:1.8}}>
-            Karnov kostar 40 000 kr/år. Normiq kostar en timmes fakturerbar tid.
-          </p>
-          <div className="price-grid" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:1,background:'#E0DDD6'}}>
+      {/* FÖR VEM */}
+      <section style={{ padding: '88px 48px', maxWidth: 1100, margin: '0 auto' }}>
+        <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 16 }}>För vem</div>
+        <h2 className="cg" style={{ fontSize: 'clamp(32px, 3.5vw, 48px)', color: '#0A0A0C', marginBottom: 52, letterSpacing: '-.02em' }}>
+          Byggt för team som arbetar där fel kostar
+        </h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)' }}>
+          {[
+            { role: 'Redovisningskonsulter', desc: 'Kortare researchtid och bättre underlag i kunddialogen. Hitta rätt lagrum snabbare och dokumentera det.' },
+            { role: 'Skattejurister', desc: 'Snabbare första genomgång med tydligt källstöd. Fokusera på bedömningen — inte på att leta i lagtext.' },
+            { role: 'CFO:er och ekonomichefer', desc: 'Spårbarhet i interna bedömningar och beslutsunderlag. Vet vilket lagrum svaret bygger på.' },
+            { role: 'Redovisningsbyråer', desc: 'Konsekvent arbetssätt över hela teamet. Samma källkvalitet oavsett vem som svarar.' },
+          ].map((a, i) => (
+            <div key={i} className="audience-card" style={{
+              borderBottom: i < 2 ? '1px solid #E8E5DF' : 'none',
+              borderRight: i % 2 === 0 ? '1px solid #E8E5DF' : 'none',
+            }}>
+              <div className="cg" style={{ fontSize: 22, fontWeight: 600, color: '#0A0A0C', marginBottom: 10 }}>{a.role}</div>
+              <div className="mono" style={{ fontSize: 13, color: '#666', lineHeight: 1.85 }}>{a.desc}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* PRISER */}
+      <section id="priser" style={{ background: 'white', borderTop: '1px solid #E0DDD6', borderBottom: '1px solid #E0DDD6', padding: '88px 48px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 16 }}>Priser</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 48, flexWrap: 'wrap', gap: 20 }}>
+            <h2 className="cg" style={{ fontSize: 'clamp(32px, 3.5vw, 48px)', color: '#0A0A0C', letterSpacing: '-.02em' }}>
+              Enkel prissättning för byråer och ekonomiteam
+            </h2>
+            <div className="toggle-pill">
+              <button className={`toggle-opt ${!billingAnnual ? 'active' : ''}`} onClick={() => setBillingAnnual(false)}>Månadsvis</button>
+              <button className={`toggle-opt ${billingAnnual ? 'active' : ''}`} onClick={() => setBillingAnnual(true)}>
+                Årsvis <span style={{ color: '#3A7A52', marginLeft: 4 }}>−20%</span>
+              </button>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {[
-              {name:'Starter',price:'490',unit:'kr/mån',desc:'För enskilda konsulter som vill testa',features:['50 frågor per månad','Grundläggande regelindex','Källhänvisningar & riskklassning','Auditlogg','E-postsupport'],featured:false},
-              {name:'Pro',price:'1 990',unit:'kr/mån',desc:'För byråer upp till 10 användare',features:['Obegränsat antal frågor','Fullständigt regelindex — IL, ML, SFL, BFL, ABL','Komplett auditlogg & PDF-export','API-access','Prioritetssupport inom 4h'],featured:true},
-              {name:'Enterprise',price:'Offert',unit:'',desc:'För stora byråer och bolag',features:['Anpassat regelindex','SSO & on-prem option','SLA 99.9% med garanti','Dedikerad kundansvarig','White-label möjlighet'],featured:false},
-            ].map(p=>(
-              <div key={p.name} className="pc" style={{background:p.featured?'#0A0A0C':'white'}}>
-                {p.featured&&(
-                  <div className="mono" style={{fontSize:12,letterSpacing:'.1em',textTransform:'uppercase',color:'#C0321A',marginBottom:32}}>● Mest populär</div>
+              {
+                name: 'Starter',
+                price: billingAnnual ? '392' : '490',
+                desc: 'För dig som vill testa Normiq i praktiken.',
+                features: ['1 användare', 'Källbaserade svar', 'Riskklassning', 'Auditlogg', 'Klickbara lagrum'],
+                cta: 'Kom igång gratis',
+                href: '/register',
+                featured: false,
+              },
+              {
+                name: 'Pro',
+                price: billingAnnual ? '1 592' : '1 990',
+                desc: 'För mindre byråer och team som vill använda Normiq i vardagen.',
+                features: ['Upp till 10 användare', 'Allt i Starter', 'Teamhistorik', 'Prioriterad support', 'Exportera svar som PDF'],
+                cta: 'Starta Pro',
+                href: '/register?plan=pro',
+                featured: true,
+              },
+              {
+                name: 'Enterprise',
+                price: 'Offert',
+                desc: 'För större organisationer med högre krav på integration, säkerhet och styrning.',
+                features: ['Obegränsade användare', 'Allt i Pro', 'SSO / SAML', 'Dataisolering', 'SLA och dedikerad support'],
+                cta: 'Kontakta oss',
+                href: 'mailto:hej@normiq.se',
+                featured: false,
+              },
+            ].map((plan, i) => (
+              <div key={i} className={`price-card ${plan.featured ? 'featured' : ''}`}>
+                {plan.featured && (
+                  <div className="mono" style={{ position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', background: '#0A0A0C', color: 'white', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', padding: '5px 14px', borderRadius: '0 0 6px 6px' }}>
+                    Mest populär
+                  </div>
                 )}
-                <div className="cg" style={{fontSize:44,color:p.featured?'white':'#0A0A0C',marginBottom:16}}>{p.name}</div>
-                <div style={{marginBottom:16,lineHeight:1}}>
-                  <span className="cg" style={{fontSize:80,color:p.featured?'white':'#0A0A0C',lineHeight:1,letterSpacing:'-.04em'}}>{p.price}</span>
-                  {p.unit&&<span className="mono" style={{fontSize:17,color:p.featured?'#444':'#999',marginLeft:12}}>{p.unit}</span>}
+                <div className="mono" style={{ fontSize: 11, letterSpacing: '.1em', textTransform: 'uppercase', color: '#888', marginBottom: 8 }}>{plan.name}</div>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginBottom: 8 }}>
+                  <span className="cg" style={{ fontSize: 44, fontWeight: 300, color: '#0A0A0C', letterSpacing: '-.02em' }}>{plan.price}</span>
+                  {plan.price !== 'Offert' && <span className="mono" style={{ fontSize: 13, color: '#888' }}>kr/mån</span>}
                 </div>
-                <div className="mono" style={{fontSize:17,color:p.featured?'#444':'#999',marginBottom:44,lineHeight:1.7}}>{p.desc}</div>
-                <div style={{display:'flex',flexDirection:'column',gap:20,marginBottom:60}}>
-                  {p.features.map(f=>(
-                    <div key={f} style={{display:'flex',gap:16,alignItems:'flex-start'}}>
-                      <span style={{color:'#C0321A',flexShrink:0,fontSize:20,lineHeight:1.4}}>→</span>
-                      <span className="mono" style={{fontSize:16,color:p.featured?'#777':'#444',lineHeight:1.6}}>{f}</span>
+                <div className="mono" style={{ fontSize: 12, color: '#888', lineHeight: 1.7, marginBottom: 28, minHeight: 48 }}>{plan.desc}</div>
+                <div style={{ borderTop: '1px solid #F0EDE6', paddingTop: 24, marginBottom: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {plan.features.map((f, fi) => (
+                    <div key={fi} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ color: '#3A7A52', flexShrink: 0, fontFamily: 'DM Mono, monospace', fontSize: 12, marginTop: 1 }}>✓</span>
+                      <span className="mono" style={{ fontSize: 12, color: '#444', lineHeight: 1.5 }}>{f}</span>
                     </div>
                   ))}
                 </div>
-                <a href="/register" style={{
-                  display:'block', textAlign:'center',
-                  fontFamily:'DM Mono,monospace', fontSize:15, fontWeight:500,
-                  letterSpacing:'.1em', textTransform:'uppercase',
-                  padding:22, textDecoration:'none',
-                  background:p.featured?'#C0321A':'transparent',
-                  color:p.featured?'white':'#0A0A0C',
-                  border:p.featured?'none':'2px solid #0A0A0C',
-                  transition:'all .2s'
-                }}
-                  onMouseEnter={e=>{if(!p.featured){(e.currentTarget as HTMLElement).style.background='#0A0A0C';(e.currentTarget as HTMLElement).style.color='white'}}}
-                  onMouseLeave={e=>{if(!p.featured){(e.currentTarget as HTMLElement).style.background='transparent';(e.currentTarget as HTMLElement).style.color='#0A0A0C'}}}>
-                  {p.price==='Offert'?'Kontakta oss →':'Kom igång gratis →'}
+                <a href={plan.href} className={plan.featured ? 'btn-primary' : 'btn-secondary'} style={{ width: '100%', justifyContent: 'center', fontSize: 11 }}>
+                  {plan.cta}
                 </a>
-                {p.featured&&<div className="mono" style={{fontSize:13,color:'#333',textAlign:'center',marginTop:20,letterSpacing:'.06em'}}>14 dagar gratis · Inget kreditkort</div>}
               </div>
             ))}
           </div>
@@ -311,72 +408,66 @@ export default function Landing() {
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="section-pad" style={{padding:'180px 140px',borderBottom:'1px solid #E0DDD6',background:'#FAFAF8'}}>
-        <div style={{maxWidth:1000,margin:'0 auto'}}>
-          <div className="mono" style={{fontSize:13,letterSpacing:'.12em',textTransform:'uppercase',color:'#C0321A',marginBottom:28,textAlign:'center'}}>FAQ</div>
-          <h2 className="cg" style={{fontSize:'clamp(56px,6vw,88px)',lineHeight:1.05,color:'#0A0A0C',textAlign:'center',marginBottom:88,letterSpacing:'-.02em'}}>
-            Vanliga frågor
-          </h2>
-          {[
-            {q:'Ersätter Normiq en skattejurist?',a:'Nej — och det är ett medvetet designbeslut. Normiq är ett research- och dokumentationsverktyg. Det ger dig rätt lagtext och källhänvisning snabbt, men bedömning av komplexa ärenden kräver alltid en jurist. Normiq talar tydligt om när risken är hög och du bör söka experthjälp.'},
-            {q:'Hur aktuell är lagdatabasen?',a:'Vi hämtar automatiskt uppdaterad lagtext från riksdagen.se och skatteverket.se. När en lag ändras uppdateras regelindexet inom 24 timmar. Alla svar inkluderar datum för den lagversion som användes.'},
-            {q:'Vad händer med mina frågor och svar?',a:'Dina frågor och svar lagras i din privata auditlogg och är bara tillgängliga för dig. Vi använder aldrig dina frågor för att träna AI-modeller. All data lagras i Sverige och omfattas av GDPR.'},
-            {q:'Varför är det dyrare än ChatGPT?',a:'ChatGPT är ett generellt verktyg utan källhänvisningar, utan regelindex och utan auditlogg. Du betalar inte för AI — du betalar för ett kurerat regelindex, verifierbara svar och infrastrukturen som gör dig ansvarsfri inför klient och myndighet. Karnov kostar 40 000 kr/år. Vi kostar en bråkdel.'},
-            {q:'Kan jag prova innan jag betalar?',a:'Ja. Du får 14 dagar gratis på alla planer — inget kreditkort behövs. Om du inte är nöjd kostar det dig ingenting och vi förklarar gärna varför.'},
-          ].map((item,i)=><FaqItem key={i} q={item.q} a={item.a}/>)}
+      <section id="faq" style={{ padding: '88px 48px', maxWidth: 760, margin: '0 auto' }}>
+        <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 16 }}>Vanliga frågor</div>
+        <h2 className="cg" style={{ fontSize: 'clamp(32px, 3.5vw, 48px)', color: '#0A0A0C', marginBottom: 48, letterSpacing: '-.02em' }}>FAQ</h2>
+        <div style={{ borderTop: '1px solid #E0DDD6' }}>
+          {faqs.map((faq, i) => (
+            <div key={i} className="faq-item">
+              <button className="faq-btn" onClick={() => setOpenFaq(openFaq === i ? null : i)}>
+                <span className="cg faq-q" style={{ fontSize: 20, color: '#0A0A0C', transition: 'color .2s', paddingRight: 24 }}>{faq.q}</span>
+                <span style={{ color: '#C0321A', flexShrink: 0, fontFamily: 'DM Mono, monospace', fontSize: 18, transition: 'transform .2s', display: 'inline-block', transform: openFaq === i ? 'rotate(45deg)' : 'none' }}>+</span>
+              </button>
+              {openFaq === i && (
+                <div className="mono" style={{ fontSize: 13, color: '#555', lineHeight: 1.9, paddingBottom: 24 }}>
+                  {faq.a}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* FINAL CTA */}
-      <section className="section-pad" style={{padding:'200px 140px',background:'#0A0A0C',textAlign:'center',position:'relative',overflow:'hidden'}}>
-        <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%)',width:'800px',height:'800px',borderRadius:'50%',background:'radial-gradient(circle,rgba(192,50,26,.07) 0%,transparent 70%)',pointerEvents:'none'}}/>
-        <div className="mono" style={{fontSize:13,letterSpacing:'.16em',textTransform:'uppercase',color:'#C0321A',marginBottom:36}}>
-          Kom igång idag
-        </div>
-        <h2 className="cg" style={{fontSize:'clamp(72px,10vw,140px)',lineHeight:.88,color:'white',marginBottom:36,letterSpacing:'-.04em'}}>
-          Dina svar.<br/><em style={{color:'#C0321A'}}>Med bevis.</em>
-        </h2>
-        <p className="mono" style={{fontSize:20,color:'#555',maxWidth:600,margin:'0 auto 80px',lineHeight:2.1}}>
-          Gå med i de redovisningskonsulter och skattejurister som redan arbetar med källhänvisningar i varje svar.
-        </p>
-        <div style={{display:'flex',gap:32,justifyContent:'center',alignItems:'center',flexWrap:'wrap'}}>
-          <a href="/register" className="btn-p" style={{fontSize:16,padding:'26px 64px'}}>Skapa konto gratis →</a>
-          <a href="/login" className="btn-g" style={{fontSize:16}}>Redan kund? Logga in</a>
-        </div>
-        <div className="mono" style={{fontSize:14,color:'#2a2a2e',marginTop:36,letterSpacing:'.06em'}}>
-          14 dagar gratis · Inget kreditkort · Avsluta när du vill
+      {/* CTA */}
+      <section style={{ background: '#0A0A0C', padding: '88px 48px' }}>
+        <div style={{ maxWidth: 700, margin: '0 auto', textAlign: 'center' }}>
+          <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 20 }}>Kom igång idag</div>
+          <h2 className="cg" style={{ fontSize: 'clamp(36px, 4vw, 60px)', color: 'white', marginBottom: 20, letterSpacing: '-.02em', lineHeight: 1.05 }}>
+            Redo att arbeta med källhänvisning i varje svar?
+          </h2>
+          <p className="mono" style={{ fontSize: 13, color: '#888', lineHeight: 1.85, marginBottom: 40 }}>
+            Testa Normiq utan kostnad. Ingen betalningsinformation krävs.
+          </p>
+          <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <a href="/register" className="btn-primary">Testa gratis</a>
+            
+              href="mailto:hej@normiq.se"
+              style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', border: '1px solid #333', borderRadius: 4, fontFamily: 'DM Mono, monospace', fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: '#888', textDecoration: 'none', transition: 'all .2s' }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = '#888'; e.currentTarget.style.color = 'white' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#888' }}
+            >
+              Boka demo
+            </a>
+          </div>
         </div>
       </section>
 
       {/* FOOTER */}
-      <footer style={{borderTop:'1px solid #1a1a1e',background:'#0A0A0C',padding:'60px 140px',display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:24}}>
-        <div className="cg" style={{fontSize:32,color:'white',fontWeight:600,letterSpacing:'-.02em'}}>
-          Normi<span style={{color:'#C0321A'}}>q</span>
-        </div>
-        <div className="mono" style={{fontSize:13,color:'#2a2a2e',letterSpacing:'.04em'}}>© 2025 Normiq AB. Compliance intelligence.</div>
-        <div style={{display:'flex',gap:40}}>
-          {['Integritet','Villkor','Kontakt'].map(l=>(
-            <a key={l} href="#" className="mono" style={{fontSize:13,color:'#2a2a2e',textDecoration:'none',letterSpacing:'.06em',transition:'color .2s'}}
-              onMouseEnter={e=>((e.currentTarget as HTMLElement).style.color='#666')}
-              onMouseLeave={e=>((e.currentTarget as HTMLElement).style.color='#2a2a2e')}>{l}</a>
-          ))}
+      <footer style={{ borderTop: '1px solid #E0DDD6', padding: '32px 48px', background: '#F5F3EE' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+          <span className="cg" style={{ fontSize: 22, fontWeight: 600, color: '#0A0A0C' }}>
+            Normi<span style={{ color: '#C0321A' }}>q</span>
+          </span>
+          <div className="mono" style={{ fontSize: 11, color: '#CCC', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <a href="/login" style={{ color: '#CCC', textDecoration: 'none' }}>Logga in</a>
+            <a href="mailto:hej@normiq.se" style={{ color: '#CCC', textDecoration: 'none' }}>Kontakt</a>
+            <span>© 2025 Normiq</span>
+          </div>
+          <div className="mono" style={{ fontSize: 10, color: '#DDD', letterSpacing: '.04em' }}>
+            Konsultera alltid en skatteexpert.
+          </div>
         </div>
       </footer>
-    </div>
-  )
-}
-
-function FaqItem({ q, a }: { q: string; a: string }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="faq" onClick={() => setOpen(v => !v)}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-        <div style={{fontFamily:'Cormorant Garamond,Georgia,serif',fontSize:36,color:'#0A0A0C',lineHeight:1.2,paddingRight:48,fontWeight:400}}>{q}</div>
-        <div style={{fontFamily:'DM Mono,monospace',fontSize:28,color:'#C0321A',flexShrink:0,transition:'transform .25s',transform:open?'rotate(45deg)':'none'}}>+</div>
-      </div>
-      {open&&(
-        <div style={{fontFamily:'DM Mono,monospace',fontSize:18,color:'#777',lineHeight:2,marginTop:28,maxWidth:860,paddingRight:80}}>{a}</div>
-      )}
     </div>
   )
 }
