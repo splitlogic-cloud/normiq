@@ -91,42 +91,103 @@ function renderInline(text: string): React.ReactNode {
   })
 }
 
+// Detects if a block of lines forms a markdown table
+function isTableBlock(lines: string[]): boolean {
+  return lines.length >= 2 && lines[0].includes('|') && lines[1].replace(/[\s|:-]/g, '') === ''
+}
+
+function renderTable(lines: string[], key: number): React.ReactNode {
+  const rows = lines.filter((l, i) => i !== 1).map(l =>
+    l.split('|').map(c => c.trim()).filter((_, i, arr) => i > 0 && i < arr.length - 1)
+  )
+  const [header, ...body] = rows
+  return (
+    <div key={key} style={{ overflowX: 'auto', margin: '12px 0 16px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: 'DM Mono, monospace', fontSize: 13 }}>
+        <thead>
+          <tr style={{ borderBottom: '2px solid #0A0A0C' }}>
+            {header.map((h, i) => (
+              <th key={i} style={{ padding: '10px 16px', textAlign: 'left', fontWeight: 500, color: '#0A0A0C', letterSpacing: '.06em', whiteSpace: 'nowrap', fontSize: 11, textTransform: 'uppercase' }}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => (
+            <tr key={ri} style={{ borderBottom: '1px solid #F0EDE6', background: ri % 2 === 0 ? 'white' : '#FAFAF8' }}>
+              {row.map((cell, ci) => (
+                <td key={ci} style={{ padding: '10px 16px', color: ci === 0 ? '#333' : '#555', lineHeight: 1.6, whiteSpace: ci === 0 ? 'nowrap' : 'normal' }}>
+                  {renderInline(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function formatBody(text: string) {
   if (!text) return null
   const lines = text.split('\n')
   const elements: React.ReactNode[] = []
   let key = 0
-  for (const line of lines) {
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
     const trimmed = line.trim()
-    if (!trimmed) { elements.push(<div key={key++} style={{ height: 6 }} />); continue }
+
+    // Collect table block
+    if (trimmed.startsWith('|') && lines[i + 1] && lines[i + 1].replace(/[\s|:-]/g, '') === '') {
+      const tableLines: string[] = []
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tableLines.push(lines[i])
+        i++
+      }
+      if (isTableBlock(tableLines)) {
+        elements.push(renderTable(tableLines, key++))
+        continue
+      }
+    }
+
+    if (!trimmed) { elements.push(<div key={key++} style={{ height: 6 }} />); i++; continue }
+
     if (trimmed.startsWith('## ')) {
-      elements.push(<h2 key={key++} style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 24, fontWeight: 600, color: '#0A0A0C', margin: '4px 0 12px', lineHeight: 1.2 }}>{trimmed.slice(3)}</h2>)
-      continue
+      elements.push(<h2 key={key++} style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 26, fontWeight: 600, color: '#0A0A0C', margin: '4px 0 14px', lineHeight: 1.15, letterSpacing: '-.01em' }}>{trimmed.slice(3)}</h2>)
+      i++; continue
     }
     if (trimmed.startsWith('### ')) {
-      elements.push(<h3 key={key++} style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 20, fontWeight: 600, color: '#0A0A0C', margin: '12px 0 8px', lineHeight: 1.2 }}>{trimmed.slice(4)}</h3>)
-      continue
+      elements.push(<h3 key={key++} style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 20, fontWeight: 600, color: '#0A0A0C', margin: '14px 0 8px', lineHeight: 1.2 }}>{trimmed.slice(4)}</h3>)
+      i++; continue
     }
     if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
       elements.push(
         <div key={key++} style={{ display: 'flex', gap: 10, marginBottom: 6, alignItems: 'flex-start' }}>
-          <span style={{ color: '#C0321A', flexShrink: 0, marginTop: 3, fontSize: 11 }}>→</span>
-          <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, color: '#333', lineHeight: 1.7 }}>{renderInline(trimmed.replace(/^[-•]\s+/, ''))}</span>
+          <span style={{ color: '#C0321A', flexShrink: 0, marginTop: 4, fontSize: 11 }}>→</span>
+          <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: '#333', lineHeight: 1.75 }}>{renderInline(trimmed.replace(/^[-•]\s+/, ''))}</span>
         </div>
       )
-      continue
+      i++; continue
     }
     if (/^\d+\.\s/.test(trimmed)) {
       const num = trimmed.match(/^(\d+)\./)?.[1]
       elements.push(
         <div key={key++} style={{ display: 'flex', gap: 10, marginBottom: 6, alignItems: 'flex-start' }}>
-          <span style={{ fontFamily: 'DM Mono, monospace', color: '#C0321A', flexShrink: 0, fontSize: 12, marginTop: 3, minWidth: 18 }}>{num}.</span>
-          <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, color: '#333', lineHeight: 1.7 }}>{renderInline(trimmed.replace(/^\d+\.\s/, ''))}</span>
+          <span style={{ fontFamily: 'DM Mono, monospace', color: '#C0321A', flexShrink: 0, fontSize: 12, marginTop: 4, minWidth: 18 }}>{num}.</span>
+          <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: '#333', lineHeight: 1.75 }}>{renderInline(trimmed.replace(/^\d+\.\s/, ''))}</span>
         </div>
       )
-      continue
+      i++; continue
     }
-    elements.push(<p key={key++} style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, color: '#1a1a1a', lineHeight: 1.85, marginBottom: 8 }}>{renderInline(trimmed)}</p>)
+    elements.push(
+      <p key={key++} style={{ fontFamily: 'DM Mono, monospace', fontSize: 14, color: '#1a1a1a', lineHeight: 1.9, marginBottom: 8 }}>
+        {renderInline(trimmed)}
+      </p>
+    )
+    i++
   }
   return <>{elements}</>
 }
@@ -210,9 +271,7 @@ export default function App() {
     const newMessages: Message[] = [...messages, { role: 'user', content: q }]
     setMessages(newMessages)
     setLoading(true)
-
     const { data: { user } } = await supabase.auth.getUser()
-
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -319,15 +378,18 @@ export default function App() {
           transition: all .15s;
         }
         .feedback-btn:hover { border-color: #0A0A0C; background: #F5F3EE; transform: translateY(-1px); }
-        .section-divider {
-          display: flex; align-items: center; gap: 10; margin: 16px 0 12px;
-        }
         @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:none; } }
         @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
         .msg-in { animation: fadeUp .35s both; }
         .typing span { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #C0321A; margin: 0 3px; animation: pulse 1.3s ease-in-out infinite; }
         .typing span:nth-child(2) { animation-delay: .22s; }
         .typing span:nth-child(3) { animation-delay: .44s; }
+        .answer-table { width: 100%; border-collapse: collapse; font-family: 'DM Mono', monospace; font-size: 13px; }
+        .answer-table th { padding: 10px 16px; text-align: left; font-weight: 500; color: #0A0A0C; border-bottom: 2px solid #0A0A0C; letter-spacing: .06em; font-size: 11px; text-transform: uppercase; white-space: nowrap; }
+        .answer-table td { padding: 10px 16px; color: #444; line-height: 1.6; border-bottom: 1px solid #F0EDE6; }
+        .answer-table tr:nth-child(even) td { background: #FAFAF8; }
+        .answer-table tr:last-child td { border-bottom: none; }
+        .answer-table tr:hover td { background: #FDF4F3; }
       `}</style>
 
       {/* SIDEBAR */}
@@ -357,40 +419,28 @@ export default function App() {
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
             {popular.length > 0 && (
               <>
-                <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '8px 6px 6px' }}>
-                  Populärast
-                </div>
+                <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '8px 6px 6px' }}>Populärast</div>
                 {popular.map((item, idx) => (
                   <div key={idx} className="popular-item" onClick={() => sendMessage(item.question)}>
                     <span className="mono" style={{ fontSize: 10, color: '#C0321A', flexShrink: 0, marginTop: 2 }}>{idx + 1}</span>
-                    <span style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#444', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                      {item.question}
-                    </span>
+                    <span style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#444', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{item.question}</span>
                   </div>
                 ))}
                 <div style={{ height: 1, background: '#F0EDE6', margin: '10px 4px' }} />
               </>
             )}
 
-            <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '4px 6px 6px' }}>
-              Tidigare frågor
-            </div>
+            <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '4px 6px 6px' }}>Tidigare frågor</div>
             {history.length === 0 ? (
-              <div className="mono" style={{ fontSize: 11, color: '#DDD', padding: '8px 10px', lineHeight: 1.7 }}>
-                Dina frågor sparas här
-              </div>
+              <div className="mono" style={{ fontSize: 11, color: '#DDD', padding: '8px 10px', lineHeight: 1.7 }}>Dina frågor sparas här</div>
             ) : (
               history.map(item => (
                 <div key={item.id} className="hist-item" onClick={() => loadFromHistory(item)}>
-                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#333', lineHeight: 1.4, marginBottom: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-                    {item.question}
-                  </div>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#333', lineHeight: 1.4, marginBottom: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{item.question}</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div className="mono" style={{ fontSize: 10, color: '#CCC' }}>{timeAgo(item.created_at)}</div>
                     {item.risk_level && (
-                      <div className="mono" style={{ fontSize: 9, color: getRiskColor(item.risk_level), background: `${getRiskColor(item.risk_level)}15`, padding: '1px 6px', borderRadius: 10 }}>
-                        {item.risk_level}
-                      </div>
+                      <div className="mono" style={{ fontSize: 9, color: getRiskColor(item.risk_level), background: `${getRiskColor(item.risk_level)}15`, padding: '1px 6px', borderRadius: 10 }}>{item.risk_level}</div>
                     )}
                   </div>
                 </div>
@@ -529,7 +579,6 @@ export default function App() {
                             })}
                           </div>
                         )}
-
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           {riskLine
                             ? <div className="mono" style={{ fontSize: 11, color: riskColor, background: `${riskColor}15`, padding: '4px 12px', borderRadius: 20, letterSpacing: '.06em', whiteSpace: 'nowrap' }}>
@@ -595,7 +644,7 @@ export default function App() {
               </button>
             </div>
             <div className="mono" style={{ fontSize: 10, color: '#CCC', textAlign: 'center', marginTop: 10, letterSpacing: '.04em' }}>
-              Baseras på IL · ML · BFL · SFL · ABL - verifiera alltid med en skatteexpert
+              Baseras på IL · ML · BFL · SFL · ABL — verifiera alltid med en skatteexpert
             </div>
           </div>
         </div>
