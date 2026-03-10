@@ -510,6 +510,24 @@ export function checkRule(regeltyp: string, params: Record<string, number>): Che
     }
   }
 
+  {
+    id: 'bfn-k2-k3-2026',
+    kategori: 'bokforing',
+    rubrik: 'K2 → K3-övergång 2026',
+    kortSvar: 'Från räkenskapsår efter 31 dec 2025 får vissa företag inte längre tillämpa K2 — fastighetsbolag, bolag med utländska filialer, kryptotillgångar m.fl. måste byta till K3.',
+    detaljer: 'Bostadsrättsföreningar måste tillämpa K3 från 2026. Fastighetsbolag där byggnader ger ≥75% av omsättningen ska tillämpa K3. Företag med utländska filialer eller kryptotillgångar får ej längre tillämpa K2.',
+    källa: 'BFNAR 2025:3, BFNAR 2016:10',
+    sökord: ['k2', 'k3', 'byta', 'övergång', 'bostadsrättsförening', 'fastighetsbolag', '2026'],
+    regel: {
+      typ: 'villkor',
+      villkor: ['Fastighetsbolag ≥75% omsättning', 'Bostadsrättsföreningar', 'Utländska filialer', 'Kryptotillgångar'],
+      undantag: ['Lättnadsregeln för små fastighetsbolag'],
+      källa: 'BFNAR 2025:3',
+    },
+  },
+
+
+
   // Periodiseringsfond
   if (lowerTyp.includes('periodiseringsfond')) {
     const gräns = 0.25
