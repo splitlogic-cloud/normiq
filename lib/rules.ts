@@ -427,14 +427,15 @@ export const rules: Rule[] = [
     },
   },
 
-  // ── K2/K3-ÖVERGÅNG ────────────────────────────────────────────────────────
-
   {
-    id: 'bfn-k2-k3-2026',
-    kategori: 'bokföring',
+    ref: 'BFN K2/K3',
     rubrik: 'K2 till K3-övergång 2026',
-    kortSvar: 'Från räkenskapsår efter 31 dec 2025 får vissa företag inte längre tillämpa K2 - fastighetsbolag, bolag med finansiella instrument och vissa andra.',
-    detaljer: 'Bostadsrättsföreningar måste tillämpa K3 från 2026. Fastighetsbolag där byggnader ger mer än 75% av omsättningen måste byta. Övriga mindre aktiebolag kan fortsätta med K2.',
+    text: 'Från räkenskapsår efter 31 dec 2025 får vissa företag inte längre tillämpa K2. Bostadsrättsföreningar måste tillämpa K3 från 2026. Fastighetsbolag där byggnader ger mer än 75% av omsättningen måste byta. Övriga mindre aktiebolag kan fortsätta med K2.',
+    regel: {
+      typ: 'klassificering',
+      villkor: ['bostadsrättsföreningar', 'fastighetsbolag >75% byggnader av omsättning'],
+      källa: 'BFNAR 2012:1 / BFNAR 2016:10',
+    },
   },
 ]
 
