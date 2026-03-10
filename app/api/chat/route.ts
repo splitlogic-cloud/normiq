@@ -59,7 +59,6 @@ function detectQuestionType(q: string): 'bokforing' | 'skatt' | 'generell' {
   return 'generell'
 }
 
-// Belopp som uppdateras varje år — webb-sökning triggas automatiskt
 function needsWebSearch(question: string): boolean {
   const q = question.toLowerCase()
   const årsbelopp = [
@@ -176,12 +175,13 @@ REGLER:
 6. Svara på svenska`
 
   // Webb-sökning aktiveras automatiskt för årsbelopp
-// @ts-expect-error — web_search_20250305 är ett giltigt type-värde
-const tools: Anthropic.Tool[] = useWebSearch ? [
-  {
-    name: 'web_search',
-    type: 'web_search_20250305',
-  },
+  // @ts-expect-error — web_search_20250305 är ett giltigt type-värde
+  const tools: Anthropic.Tool[] = useWebSearch ? [
+    {
+      name: 'web_search',
+      type: 'web_search_20250305',
+    },
+  ] : []
 
   const response = await client.messages.create({
     model: 'claude-opus-4-5',
