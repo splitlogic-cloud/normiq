@@ -107,6 +107,14 @@ export default function Landing() {
         .hero-anim-2 { animation: fadeUp .7s .15s both; }
         .hero-anim-3 { animation: fadeUp .7s .3s  both; }
         .hero-anim-4 { animation: fadeUp .7s .45s both; }
+        .cta-demo-btn {
+          display: inline-flex; align-items: center; padding: 14px 28px;
+          border: 1px solid #333; border-radius: 4px;
+          font-family: 'DM Mono', monospace; font-size: 12px;
+          letter-spacing: .08em; text-transform: uppercase;
+          color: #888; text-decoration: none; transition: all .2s;
+        }
+        .cta-demo-btn:hover { border-color: #888; color: white; }
       `}</style>
 
       {/* NAV */}
@@ -168,7 +176,7 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* HUR DET FUNGERAR — flödesdiagram */}
+      {/* HUR DET FUNGERAR */}
       <section id="hur-det-fungerar" style={{ background: 'white', borderTop: '1px solid #E0DDD6', borderBottom: '1px solid #E0DDD6', padding: '88px 48px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 16 }}>Hur det fungerar</div>
@@ -179,40 +187,13 @@ export default function Landing() {
             Normiq följer en strikt ordning. Källorna hittas och riskklassas innan AI:n formulerar ett enda ord.
           </p>
 
-          {/* Flöde */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, overflowX: 'auto', paddingBottom: 8 }}>
             {[
-              {
-                num: '01',
-                title: 'Din fråga',
-                desc: 'Du ställer en fråga om skatt, moms eller redovisning.',
-                color: '#F5F3EE',
-              },
-              {
-                num: '02',
-                title: 'Retrieval',
-                desc: 'Normiq söker i strukturerade regelkällor och identifierar relevanta lagrum.',
-                color: '#F5F3EE',
-              },
-              {
-                num: '03',
-                title: 'Riskklassning',
-                desc: 'Frågan och källorna bedöms — LÅG, MEDEL eller HÖG — innan AI:n anropas.',
-                color: '#FDF4F3',
-                highlight: true,
-              },
-              {
-                num: '04',
-                title: 'AI förklarar källorna',
-                desc: 'AI:n sammanfattar vad de hittade källorna faktiskt säger. Inte fritt — bara källorna.',
-                color: '#F5F3EE',
-              },
-              {
-                num: '05',
-                title: 'Verifierat svar',
-                desc: 'Svaret stäms mot källorna. Du får lagrum, riskbedömning och länk till originaltexten.',
-                color: '#F0F7F3',
-              },
+              { num: '01', title: 'Din fråga', desc: 'Du ställer en fråga om skatt, moms eller redovisning.', color: '#F5F3EE', highlight: false },
+              { num: '02', title: 'Retrieval', desc: 'Normiq söker i strukturerade regelkällor och identifierar relevanta lagrum.', color: '#F5F3EE', highlight: false },
+              { num: '03', title: 'Riskklassning', desc: 'Frågan och källorna bedöms — LÅG, MEDEL eller HÖG — innan AI:n anropas.', color: '#FDF4F3', highlight: true },
+              { num: '04', title: 'AI förklarar källorna', desc: 'AI:n sammanfattar vad de hittade källorna faktiskt säger. Inte fritt — bara källorna.', color: '#F5F3EE', highlight: false },
+              { num: '05', title: 'Verifierat svar', desc: 'Svaret stäms mot källorna. Du får lagrum, riskbedömning och länk till originaltexten.', color: '#F0F7F3', highlight: false },
             ].map((step, i, arr) => (
               <div key={i} style={{ display: 'flex', alignItems: 'flex-start', flex: 1, minWidth: 160 }}>
                 <div style={{ flex: 1, background: step.color, border: `1px solid ${step.highlight ? '#C0321A' : '#E0DDD6'}`, borderRadius: 8, padding: '24px 20px' }}>
@@ -221,13 +202,12 @@ export default function Landing() {
                   <div className="mono" style={{ fontSize: 12, color: '#666', lineHeight: 1.75 }}>{step.desc}</div>
                 </div>
                 {i < arr.length - 1 && (
-                  <div style={{ padding: '32px 8px 0', color: '#C0321A', fontFamily: 'DM Mono, monospace', fontSize: 16, flexShrink: 0 }}>→</div>
+                  <div style={{ padding: '32px 8px 0', color: '#C0321A', fontFamily: 'DM Mono, monospace', fontSize: 16, flexShrink: 0 }}>{'→'}</div>
                 )}
               </div>
             ))}
           </div>
 
-          {/* Kärnbudskap */}
           <div style={{ marginTop: 48, padding: '28px 36px', background: '#0A0A0C', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 32, flexWrap: 'wrap' }}>
             <div className="cg" style={{ fontSize: 26, color: 'white', letterSpacing: '-.01em', lineHeight: 1.2 }}>
               "Google för skatte- och redovisningsregler."
@@ -256,13 +236,13 @@ export default function Landing() {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {[
-              { bad: 'Generell AI', text: 'Formulerar ett svar som låter rätt — utan källhänvisning.' },
-              { bad: 'Generell AI', text: 'Du kan inte se om svaret bygger på lagtext eller träningsdata.' },
-              { bad: 'Generell AI', text: 'Ingen riskbedömning — alla svar presenteras med samma säkerhet.' },
-            ].map((item, i) => (
+              'Formulerar ett svar som låter rätt — utan källhänvisning.',
+              'Du kan inte se om svaret bygger på lagtext eller träningsdata.',
+              'Ingen riskbedömning — alla svar presenteras med samma säkerhet.',
+            ].map((text, i) => (
               <div key={i} style={{ display: 'flex', gap: 16, padding: '18px 22px', background: 'white', border: '1px solid #E0DDD6', borderRadius: 8 }}>
                 <span style={{ color: '#C0321A', flexShrink: 0, fontFamily: 'DM Mono, monospace', fontSize: 14, marginTop: 1 }}>✕</span>
-                <span className="mono" style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>{item.text}</span>
+                <span className="mono" style={{ fontSize: 13, color: '#444', lineHeight: 1.7 }}>{text}</span>
               </div>
             ))}
             <div style={{ height: 8 }} />
@@ -440,14 +420,7 @@ export default function Landing() {
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href="/register" className="btn-primary">Testa gratis</a>
-            
-            href="mailto:hej@normiq.se"
-  style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', border: '1px solid #333', borderRadius: 4, fontFamily: 'DM Mono, monospace' }}
-  onMouseEnter={e => { e.currentTarget.style.borderColor = '#888'; e.currentTarget.style.color = 'white' }}
-  onMouseLeave={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#888' }}
->
-  Boka demo
-</a>
+            <a href="mailto:hej@normiq.se" className="cta-demo-btn">Boka demo</a>
           </div>
         </div>
       </section>
