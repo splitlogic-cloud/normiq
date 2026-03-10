@@ -27,7 +27,7 @@ function classifyRisk(question: string, sources: { ref: string; text: string }[]
     'representation', 'förmån', 'bilförmån', 'tjänstebil', 'hemkontor',
     'periodisering', 'inkurans', 'nedskrivning', 'koncernbidrag',
     'ränteavdrag', 'kapitalvinst', 'uppskov', 'rot', 'rut', 'traktamente',
-    'uthyrning', 'dubbel bosättning'
+    'milersättning', 'uthyrning', 'dubbel bosättning'
   ]
 
   if (hogSignals.some(s => q.includes(s))) {
@@ -133,7 +133,7 @@ EXTRA FÖR BOKFÖRINGSFRÅGOR:
   const webSearchInstruktion = useWebSearch ? `
 
 VIKTIGT — WEBB-SÖKNING:
-Frågan gäller belopp eller regler som uppdateras varje år. 
+Frågan gäller belopp eller regler som uppdateras varje år.
 Använd web_search för att hämta aktuella belopp för 2026 direkt från Skatteverket INNAN du svarar.
 Sök på: "skatteverket [ämne] 2026"
 Ange alltid vilket år beloppet gäller och länka till källan.` : ''
@@ -158,7 +158,13 @@ SVARSFORMAT — använd exakt dessa separatorer:
 [Förklara vad källorna säger. Citera med exakt lagrum [IL 57 kap. 10 §]. Ange alltid vilket år ett belopp gäller.]
 
 ---FÖRENKLAT---
-Enkelt uttryckt: [2-3 meningar vad reglerna innebär i praktiken]
+Enkelt uttryckt: [Skriv 4–7 meningar som förklarar reglerna i praktiken för någon utan juridisk bakgrund.
+Inkludera:
+- Vad regeln innebär konkret
+- Vanliga missförstånd eller fallgropar
+- Vad man behöver tänka på eller dokumentera
+- Om det finns viktiga undantag eller gränsdragningar
+Använd vardagligt språk men var precis — detta är den viktigaste delen av svaret.]
 
 ---EXEMPEL---
 Exempel: [Konkret exempel med siffror${questionType === 'bokforing' ? '. Visa konteringsrader.' : '.'}]
@@ -174,7 +180,6 @@ REGLER:
 5. Ange alltid årstal på belopp (t.ex. "290 kr/dygn 2026")
 6. Svara på svenska`
 
-  // Webb-sökning aktiveras automatiskt för årsbelopp
   // @ts-expect-error — web_search_20250305 är ett giltigt type-värde
   const tools: Anthropic.Tool[] = useWebSearch ? [
     {
@@ -194,7 +199,6 @@ REGLER:
     })),
   })
 
-  // Extrahera text — kan innehålla tool_use block om webb-sökning användes
   const answer = response.content
     .filter(block => block.type === 'text')
     .map(block => block.type === 'text' ? block.text : '')
