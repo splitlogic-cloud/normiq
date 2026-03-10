@@ -441,13 +441,13 @@ export default function Landing() {
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href="/register" className="btn-primary">Testa gratis</a>
             
-              href="mailto:hej@normiq.se"
-              style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', border: '1px solid #333', borderRadius: 4, fontFamily: 'DM Mono, monospace', fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', color: '#888', textDecoration: 'none', transition: 'all .2s' }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = '#888'; e.currentTarget.style.color = 'white' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#888' }}
-            >
-              Boka demo
-            </a>
+            href="mailto:hej@normiq.se"
+  style={{ display: 'inline-flex', alignItems: 'center', padding: '14px 28px', border: '1px solid #333', borderRadius: 4, fontFamily: 'DM Mono, monospace' }}
+  onMouseEnter={e => { e.currentTarget.style.borderColor = '#888'; e.currentTarget.style.color = 'white' }}
+  onMouseLeave={e => { e.currentTarget.style.borderColor = '#333'; e.currentTarget.style.color = '#888' }}
+>
+  Boka demo
+</a>
           </div>
         </div>
       </section>
