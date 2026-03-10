@@ -239,7 +239,7 @@ export const rules: Rule[] = [
   {
     ref: 'BFN K2',
     rubrik: 'K2 — avskrivningar och nyttjandeperioder',
-    text: 'Byggnader: 2% per år (hyreshus) eller 4% (industri). Inventarier: 20% per år linjärt. Datorer: 3–5 år. Immateriella tillgångar: max 5 år. Goodwill: max 10 år. Inventarier under halvt prisbasbelopp (26 250 kr 2024) får dras av omedelbart.',
+    text: 'Byggnader: 2% per år (hyreshus) eller 4% (industri). Inventarier: 20% per år linjärt. Datorer: 3-5 år. Immateriella tillgångar: max 5 år. Goodwill: max 10 år. Inventarier under halvt prisbasbelopp (26 250 kr 2024) får dras av omedelbart.',
     regel: {
       typ: 'avdragsgräns',
       satser: [
@@ -426,6 +426,16 @@ export const rules: Rule[] = [
       källa: 'ABL 17 kap. 3 §',
     },
   },
+
+  // ── K2/K3-ÖVERGÅNG ────────────────────────────────────────────────────────
+
+  {
+    id: 'bfn-k2-k3-2026',
+    kategori: 'bokföring',
+    rubrik: 'K2 till K3-övergång 2026',
+    kortSvar: 'Från räkenskapsår efter 31 dec 2025 får vissa företag inte längre tillämpa K2 - fastighetsbolag, bolag med finansiella instrument och vissa andra.',
+    detaljer: 'Bostadsrättsföreningar måste tillämpa K3 från 2026. Fastighetsbolag där byggnader ger mer än 75% av omsättningen måste byta. Övriga mindre aktiebolag kan fortsätta med K2.',
+  },
 ]
 
 // ── SÖKFUNKTION ──────────────────────────────────────────────────────────────
@@ -486,8 +496,8 @@ export function checkRule(regeltyp: string, params: Record<string, number>): Che
       faktiskt: Math.round(perPerson),
       enhet: 'kr/person exkl. moms',
       meddelande: perPerson <= gräns
-        ? `✓ Inom avdragsgräns (${Math.round(perPerson)} kr/person ≤ ${gräns} kr)`
-        : `⚠ Över avdragsgräns (${Math.round(perPerson)} kr/person > ${gräns} kr). Överskott bokförs på 6071.`,
+        ? `✓ Inom avdragsgräns (${Math.round(perPerson)} kr/person <= ${gräns} kr)`
+        : `Över avdragsgräns (${Math.round(perPerson)} kr/person > ${gräns} kr). Överskott bokförs på 6071.`,
       källa: regel?.regel?.källa || 'IL 16 kap. 2 §',
     }
   }
@@ -504,29 +514,11 @@ export function checkRule(regeltyp: string, params: Record<string, number>): Che
       faktiskt: ersättning,
       enhet: 'kr/mil',
       meddelande: ersättning <= gräns
-        ? `✓ Inom skattefri gräns (${ersättning} kr/mil ≤ ${gräns} kr)`
-        : `⚠ Över skattefri gräns (${ersättning} kr/mil > ${gräns} kr). Överskott är skattepliktig förmån.`,
+        ? `✓ Inom skattefri gräns (${ersättning} kr/mil <= ${gräns} kr)`
+        : `Över skattefri gräns (${ersättning} kr/mil > ${gräns} kr). Överskott är skattepliktig förmån.`,
       källa: regel?.regel?.källa || 'IL 12 kap. 5 §',
     }
   }
-
-  {
-    id: 'bfn-k2-k3-2026',
-    kategori: 'bokforing',
-    rubrik: 'K2 → K3-övergång 2026',
-    kortSvar: 'Från räkenskapsår efter 31 dec 2025 får vissa företag inte längre tillämpa K2 — fastighetsbolag, bolag med utländska filialer, kryptotillgångar m.fl. måste byta till K3.',
-    detaljer: 'Bostadsrättsföreningar måste tillämpa K3 från 2026. Fastighetsbolag där byggnader ger ≥75% av omsättningen ska tillämpa K3. Företag med utländska filialer eller kryptotillgångar får ej längre tillämpa K2.',
-    källa: 'BFNAR 2025:3, BFNAR 2016:10',
-    sökord: ['k2', 'k3', 'byta', 'övergång', 'bostadsrättsförening', 'fastighetsbolag', '2026'],
-    regel: {
-      typ: 'villkor',
-      villkor: ['Fastighetsbolag ≥75% omsättning', 'Bostadsrättsföreningar', 'Utländska filialer', 'Kryptotillgångar'],
-      undantag: ['Lättnadsregeln för små fastighetsbolag'],
-      källa: 'BFNAR 2025:3',
-    },
-  },
-
-
 
   // Periodiseringsfond
   if (lowerTyp.includes('periodiseringsfond')) {
@@ -541,8 +533,8 @@ export function checkRule(regeltyp: string, params: Record<string, number>): Che
       faktiskt: avsättning,
       enhet: 'kr (max 25% av skattemässig vinst)',
       meddelande: avsättning <= maxAvsättning
-        ? `✓ Inom gräns (${avsättning} kr ≤ ${maxAvsättning} kr)`
-        : `⚠ Över gräns (${avsättning} kr > ${maxAvsättning} kr max).`,
+        ? `✓ Inom gräns (${avsättning} kr <= ${maxAvsättning} kr)`
+        : `Över gräns (${avsättning} kr > ${maxAvsättning} kr max).`,
       källa: 'IL 30 kap.',
     }
   }
