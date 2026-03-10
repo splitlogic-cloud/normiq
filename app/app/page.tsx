@@ -12,6 +12,13 @@ const LAG_URLS: Record<string, string> = {
   SKV: 'https://www.skatteverket.se/rattsinformation/stallningstaganden.4.html',
 }
 
+const SUGGESTIONS = [
+  'Hur mycket kan jag ta ut i utdelning från mitt fåmansbolag?',
+  'Vad gäller för representation och avdragsrätt?',
+  'Hur bokför jag en faktura med 25% moms?',
+  'Vad är skillnaden mellan K2 och K3?',
+]
+
 type Message = {
   role: 'user' | 'assistant'
   content: string
@@ -170,7 +177,6 @@ export default function App() {
   }
 
   async function loadPopular() {
-    // Hämta de 5 mest ställda frågorna (alla användare)
     const { data } = await supabase
       .from('queries')
       .select('question')
@@ -189,7 +195,6 @@ export default function App() {
     setPopular(sorted)
   }
 
-  // Ladda historiskt svar direkt i chatten — INGET nytt API-anrop
   function loadFromHistory(item: HistoryItem) {
     setMessages([
       { role: 'user', content: item.question },
@@ -328,7 +333,6 @@ export default function App() {
       {/* SIDEBAR */}
       {sidebarOpen && (
         <aside style={{ width: 280, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-          {/* Logo */}
           <div style={{ padding: '22px 20px 16px', borderBottom: '1px solid #E0DDD6' }}>
             <a href="/landing" style={{ textDecoration: 'none' }}>
               <div className="cg" style={{ fontSize: 28, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.02em', lineHeight: 1 }}>
@@ -338,7 +342,6 @@ export default function App() {
             <div className="mono" style={{ fontSize: 10, color: '#BBB', letterSpacing: '.12em', textTransform: 'uppercase', marginTop: 5 }}>Citation-first AI</div>
           </div>
 
-          {/* Ny konversation */}
           <div style={{ padding: '12px 12px 8px' }}>
             <button
               onClick={() => setMessages([])}
@@ -352,19 +355,13 @@ export default function App() {
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '4px 8px 8px' }}>
-
-            {/* Populäraste frågorna */}
             {popular.length > 0 && (
               <>
                 <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '8px 6px 6px' }}>
-                  🔥 Populärast
+                  Populärast
                 </div>
                 {popular.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="popular-item"
-                    onClick={() => sendMessage(item.question)}
-                  >
+                  <div key={idx} className="popular-item" onClick={() => sendMessage(item.question)}>
                     <span className="mono" style={{ fontSize: 10, color: '#C0321A', flexShrink: 0, marginTop: 2 }}>{idx + 1}</span>
                     <span style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#444', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                       {item.question}
@@ -375,7 +372,6 @@ export default function App() {
               </>
             )}
 
-            {/* Historik */}
             <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '4px 6px 6px' }}>
               Tidigare frågor
             </div>
@@ -385,11 +381,7 @@ export default function App() {
               </div>
             ) : (
               history.map(item => (
-                <div
-                  key={item.id}
-                  className="hist-item"
-                  onClick={() => loadFromHistory(item)}
-                >
+                <div key={item.id} className="hist-item" onClick={() => loadFromHistory(item)}>
                   <div style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#333', lineHeight: 1.4, marginBottom: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                     {item.question}
                   </div>
@@ -406,7 +398,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Footer */}
           <div style={{ padding: '12px 16px', borderTop: '1px solid #E0DDD6' }}>
             <div className="mono" style={{ fontSize: 10, color: '#CCC', lineHeight: 1.8 }}>
               IL · ML · BFL · SFL · ABL<br />
@@ -478,12 +469,10 @@ export default function App() {
                   <div key={i} className="msg-in">
                     <div style={{ background: 'white', border: '1px solid #E0DDD6', borderRadius: '4px 14px 14px 14px', overflow: 'hidden' }}>
 
-                      {/* DEL 1: Juridiskt svar */}
                       <div style={{ padding: '24px 28px 20px' }}>
                         {formatBody(body)}
                       </div>
 
-                      {/* DEL 2: Enkelt uttryckt — tydlig avgränsning */}
                       {simplified && (
                         <div style={{ borderTop: '2px solid #F0EDE6', padding: '18px 28px', background: '#FAFAF8' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -496,7 +485,6 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* DEL 3: Exempel — bara för bokföringsfrågor eller om det finns kontering */}
                       {example && (isBokforing || example.toLowerCase().includes('debet') || example.toLowerCase().includes('kredit')) && (
                         <div style={{ borderTop: '2px solid #F0EDE6', padding: '18px 28px', background: '#FDF4F3' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -509,7 +497,6 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* DEL 3b: Exempel för skattefrågor (utan kontering-rubrik) */}
                       {example && !isBokforing && !example.toLowerCase().includes('debet') && !example.toLowerCase().includes('kredit') && (
                         <div style={{ borderTop: '2px solid #F0EDE6', padding: '18px 28px', background: '#FDF4F3' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -522,9 +509,7 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* FOOTER */}
                       <div style={{ borderTop: '1px solid #F0EDE6', padding: '14px 28px', background: 'white', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                        {/* Källor */}
                         {sources && (
                           <div className="mono" style={{ fontSize: 11, color: '#BBB', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                             <span style={{ color: '#DDD', letterSpacing: '.06em' }}>KÄLLOR</span>
@@ -545,11 +530,10 @@ export default function App() {
                           </div>
                         )}
 
-                        {/* Risk + Feedback */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           {riskLine
                             ? <div className="mono" style={{ fontSize: 11, color: riskColor, background: `${riskColor}15`, padding: '4px 12px', borderRadius: 20, letterSpacing: '.06em', whiteSpace: 'nowrap' }}>
-                                ● {riskLine.replace(/^risk:\s*/i, '')}
+                                {riskLine.replace(/^risk:\s*/i, '')}
                               </div>
                             : <div />
                           }
@@ -561,7 +545,7 @@ export default function App() {
                               </>
                             ) : (
                               <div className="mono" style={{ fontSize: 10, color: m.feedback === 1 ? '#3A7A52' : '#C0321A', background: m.feedback === 1 ? '#3A7A5215' : '#C0321A15', padding: '4px 12px', borderRadius: 20 }}>
-                                {m.feedback === 1 ? '✓ Tack!' : '✗ Noterat — vi förbättrar det'}
+                                {m.feedback === 1 ? 'Tack!' : 'Noterat - vi förbättrar det'}
                               </div>
                             )}
                           </div>
@@ -611,7 +595,7 @@ export default function App() {
               </button>
             </div>
             <div className="mono" style={{ fontSize: 10, color: '#CCC', textAlign: 'center', marginTop: 10, letterSpacing: '.04em' }}>
-              Baseras på IL · ML · BFL · SFL · ABL — verifiera alltid med en skatteexpert
+              Baseras på IL · ML · BFL · SFL · ABL - verifiera alltid med en skatteexpert
             </div>
           </div>
         </div>
