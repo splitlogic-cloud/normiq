@@ -73,6 +73,7 @@ function isBookkeepingQuestion(content: string) {
   return ['bokför','konter','debet','kredit','bokslut','periodisera','avskrivning','inventarie','lager','upplupna','förutbetalda'].some(w => q.includes(w))
 }
 
+// FIX 3: § ikon + underline på lagrum-badges
 function renderInline(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*|\[(?:IL|ML|SFL|BFL|ABL|SKV)[^\]]+\])/g)
   return parts.map((part, i) => {
@@ -83,12 +84,30 @@ function renderInline(text: string): React.ReactNode {
       const inner = part.slice(1, -1)
       const law = inner.split(' ')[0]
       const url = LAG_URLS[law]
+      const badgeStyle: React.CSSProperties = {
+        color: '#C0321A',
+        textDecoration: 'none',
+        fontFamily: 'DM Mono, monospace',
+        fontSize: '0.84em',
+        border: '1px solid rgba(192,50,26,.25)',
+        borderBottom: '2px solid rgba(192,50,26,.45)',
+        padding: '2px 7px 2px 5px',
+        borderRadius: 3,
+        whiteSpace: 'nowrap',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
+      }
       return url
-        ? <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-            style={{ color: '#C0321A', textDecoration: 'none', fontFamily: 'DM Mono, monospace', fontSize: '0.84em', border: '1px solid rgba(192,50,26,.25)', padding: '2px 7px', borderRadius: 3, whiteSpace: 'nowrap' }}>
-            [{inner}]
+        ? <a key={i} href={url} target="_blank" rel="noopener noreferrer" style={badgeStyle}
+            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(192,50,26,.07)' }}
+            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent' }}
+          >
+            <span style={{ opacity: 0.65, fontSize: '0.9em' }}>§</span>{inner}
           </a>
-        : <span key={i} style={{ color: '#C0321A', fontFamily: 'DM Mono, monospace', fontSize: '0.84em' }}>[{inner}]</span>
+        : <span key={i} style={{ ...badgeStyle, cursor: 'default' }}>
+            <span style={{ opacity: 0.65, fontSize: '0.9em' }}>§</span>{inner}
+          </span>
     }
     return <span key={i}>{part}</span>
   })
@@ -142,7 +161,6 @@ function formatBody(text: string) {
     const line = lines[i]
     const trimmed = line.trim()
 
-    // Table block
     if (trimmed.startsWith('|') && lines[i + 1] && lines[i + 1].replace(/[\s|:-]/g, '') === '') {
       const tableLines: string[] = []
       while (i < lines.length && lines[i].trim().startsWith('|')) {
@@ -222,6 +240,10 @@ export default function App() {
   const [history, setHistory]     = useState<HistoryItem[]>([])
   const [popular, setPopular]     = useState<{ question: string; count: number }[]>([])
   const [sessionId]               = useState(() => crypto.randomUUID())
+  // FIX 4: spåra antal frågor för uppgradera-nudge
+  const [queryCount, setQueryCount] = useState(0)
+  const FREE_LIMIT = 10
+  const showUpgradeNudge = queryCount >= Math.floor(FREE_LIMIT * 0.7)
   const bottomRef                 = useRef<HTMLDivElement>(null)
   const textareaRef               = useRef<HTMLTextAreaElement>(null)
   const supabase                  = createClient()
@@ -271,6 +293,7 @@ export default function App() {
     const newMessages: Message[] = [...messages, { role: 'user', content: q }]
     setMessages(newMessages)
     setLoading(true)
+    setQueryCount(c => c + 1) // FIX 4
     const { data: { user } } = await supabase.auth.getUser()
     try {
       const res = await fetch('/api/chat', {
@@ -327,8 +350,10 @@ export default function App() {
         .suggestion-btn { padding: 16px 18px; border: 1px solid #E0DDD6; background: white; cursor: pointer; text-align: left; border-radius: 6px; transition: all .2s; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 18px; color: #333; line-height: 1.35; }
         .suggestion-btn:hover { border-color: #C0321A; background: #FDF9F8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(192,50,26,.07); }
 
-        .send-btn { width: 46px; height: 46px; background: #0A0A0C; border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .2s, transform .15s; }
-        .send-btn:hover { background: #C0321A; transform: translateY(-1px); }
+        /* FIX 1: knapp grå som standard, röd när aktiv */
+        .send-btn { width: 40px; height: 40px; background: #D0CCC4; border: none; border-radius: 7px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .2s, transform .15s; }
+        .send-btn.active { background: #C0321A; }
+        .send-btn.active:hover { background: #A02818; transform: translateY(-1px); }
         .send-btn:disabled { opacity: .3; cursor: not-allowed; transform: none; }
 
         textarea:focus { outline: none; }
@@ -341,6 +366,10 @@ export default function App() {
 
         .feedback-btn { width: 28px; height: 28px; border-radius: 5px; border: 1px solid #E0DDD6; background: white; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
         .feedback-btn:hover { border-color: #888; background: #F5F3EE; }
+
+        /* FIX 4: upgrade nudge */
+        @keyframes slideDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
+        .upgrade-nudge { animation: slideDown .3s both; }
 
         @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
         @keyframes pulse  { 0%,100%{opacity:.25} 50%{opacity:.9} }
@@ -362,11 +391,10 @@ export default function App() {
         <aside style={{ width: 276, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <div style={{ padding: '20px 20px 14px', borderBottom: '1px solid #E0DDD6' }}>
             <a href="/landing" style={{ textDecoration: 'none' }}>
-              <div className="cg" style={{ fontSize: 27, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.02em', lineHeight: 1 }}>
-                Normi<span style={{ color: '#C0321A' }}>q</span>
-              </div>
+              <span className="cg" style={{ fontSize: 27, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.02em', lineHeight: 1 }}>
+                normi<span style={{ color: '#C0321A' }}>q</span>
+              </span>
             </a>
-            <div className="mono" style={{ fontSize: 10, color: '#C8C4BC', letterSpacing: '.12em', textTransform: 'uppercase', marginTop: 5 }}>Citation-first AI</div>
           </div>
 
           <div style={{ padding: '10px 10px 6px' }}>
@@ -380,6 +408,32 @@ export default function App() {
               Ny konversation
             </button>
           </div>
+
+          {/* FIX 4: Uppgradera-nudge visas när 70% av gratisgränsen är nådd */}
+          {showUpgradeNudge && (
+            <div className="upgrade-nudge" style={{ margin: '6px 10px 4px', padding: '11px 13px', background: 'linear-gradient(135deg, #FDF4F3 0%, #FAF0EE 100%)', border: '1px solid rgba(192,50,26,.2)', borderRadius: 7 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span className="mono" style={{ fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#C0321A' }}>
+                  {FREE_LIMIT - queryCount} frågor kvar
+                </span>
+                {/* mini progress bar */}
+                <div style={{ width: 48, height: 3, background: '#F0EDE6', borderRadius: 2, overflow: 'hidden' }}>
+                  <div style={{ width: `${(queryCount / FREE_LIMIT) * 100}%`, height: '100%', background: '#C0321A', borderRadius: 2, transition: 'width .4s' }} />
+                </div>
+              </div>
+              <p style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#666', lineHeight: 1.5, marginBottom: 9 }}>
+                Uppgradera för obegränsade svar och prioriterad support.
+              </p>
+              <a
+                href="/priser"
+                style={{ display: 'block', textAlign: 'center', padding: '7px 12px', background: '#C0321A', color: 'white', borderRadius: 5, fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', textDecoration: 'none', transition: 'background .2s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = '#A02818' }}
+                onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = '#C0321A' }}
+              >
+                Uppgradera →
+              </a>
+            </div>
+          )}
 
           <div style={{ flex: 1, overflowY: 'auto', padding: '2px 7px 8px' }}>
             {popular.length > 0 && (
@@ -473,7 +527,8 @@ export default function App() {
                 if (m.role === 'user') {
                   return (
                     <div key={i} className="msg-in" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      <div className="cg" style={{ background: '#0A0A0C', color: 'white', padding: '15px 22px', borderRadius: '13px 13px 4px 13px', fontSize: 21, lineHeight: 1.35, maxWidth: '76%' }}>
+                      {/* FIX 2: Mindre padding + snävare max-width på chattbubblan */}
+                      <div className="cg" style={{ background: '#0A0A0C', color: 'white', padding: '11px 18px', borderRadius: '12px 12px 4px 12px', fontSize: 19, lineHeight: 1.35, maxWidth: '60%' }}>
                         {m.content}
                       </div>
                     </div>
@@ -488,12 +543,10 @@ export default function App() {
                   <div key={i} className="msg-in">
                     <div style={{ background: 'white', border: '1px solid #E0DDD6', borderRadius: '4px 12px 12px 12px', overflow: 'hidden' }}>
 
-                      {/* Body */}
                       <div style={{ padding: '24px 28px 18px' }}>
                         {formatBody(body)}
                       </div>
 
-                      {/* Enkelt uttryckt */}
                       {simplified && (
                         <div style={{ borderTop: '1px solid #F0EDE6', padding: '16px 28px', background: '#FAFAF8' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
@@ -506,7 +559,6 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Kontering / Exempel */}
                       {example && (
                         <div style={{ borderTop: '1px solid #F0EDE6', padding: '16px 28px', background: '#FDF4F3' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 }}>
@@ -521,10 +573,7 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Footer: sources + risk + feedback */}
                       <div style={{ borderTop: '1px solid #F0EDE6', padding: '12px 28px', background: 'white' }}>
-
-                        {/* Källor */}
                         {sources && (
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
                             <span className="mono" style={{ fontSize: 10, color: '#CCC', letterSpacing: '.08em', textTransform: 'uppercase' }}>Källor</span>
@@ -537,8 +586,11 @@ export default function App() {
                                   {idx > 0 && <span style={{ color: '#E0DDD6' }}>·</span>}
                                   {url
                                     ? <a href={url} target="_blank" rel="noopener noreferrer"
-                                        style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#C0321A', textDecoration: 'none', border: '1px solid rgba(192,50,26,.2)', padding: '2px 7px', borderRadius: 3 }}>
-                                        {trimmed}
+                                        style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#C0321A', textDecoration: 'none', border: '1px solid rgba(192,50,26,.2)', borderBottom: '2px solid rgba(192,50,26,.4)', padding: '2px 7px 2px 5px', borderRadius: 3, display: 'inline-flex', alignItems: 'center', gap: 3, transition: 'background .15s' }}
+                                        onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'rgba(192,50,26,.07)' }}
+                                        onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent' }}
+                                      >
+                                        <span style={{ opacity: 0.6, fontSize: '0.85em' }}>§</span>{trimmed}
                                       </a>
                                     : <span className="mono" style={{ fontSize: 11, color: '#888' }}>{trimmed}</span>
                                   }
@@ -548,7 +600,6 @@ export default function App() {
                           </div>
                         )}
 
-                        {/* Risk + feedback row */}
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                           {riskLine ? (
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -609,8 +660,13 @@ export default function App() {
                   t.style.height = Math.min(t.scrollHeight, 160) + 'px'
                 }}
               />
-              <button className="send-btn" onClick={() => sendMessage()} disabled={loading || !input.trim()}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+              {/* FIX 1: röd när input har innehåll */}
+              <button
+                className={`send-btn${input.trim() ? ' active' : ''}`}
+                onClick={() => sendMessage()}
+                disabled={loading || !input.trim()}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
                   <line x1="22" y1="2" x2="11" y2="13"/>
                   <polygon points="22 2 15 22 11 13 2 9 22 2"/>
                 </svg>
