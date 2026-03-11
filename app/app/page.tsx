@@ -41,6 +41,15 @@ function getRiskColor(risk: string) {
   return                              { text: '#2E6644', bg: '#EFF6F2', border: '#BFD9CC' }
 }
 
+// ── FIX: extrahera verklig risk-nivå ur svarstexten ──────────────────────
+function extractRiskLevel(content: string): string {
+  const line = content.split('\n').find(l => l.toLowerCase().startsWith('risk:')) || ''
+  if (line.includes('HÖG'))   return 'HÖG'
+  if (line.includes('MEDEL')) return 'MEDEL'
+  if (line.includes('LÅG'))   return 'LÅG'
+  return ''
+}
+
 function parseAnswer(content: string) {
   if (!content || typeof content !== 'string') {
     return { body: 'Ett fel uppstod. Försök igen.', simplified: '', example: '', sources: '', riskLine: '' }
@@ -73,7 +82,6 @@ function isBookkeepingQuestion(content: string) {
   return ['bokför','konter','debet','kredit','bokslut','periodisera','avskrivning','inventarie','lager','upplupna','förutbetalda'].some(w => q.includes(w))
 }
 
-// FIX 3: § ikon + underline på lagrum-badges
 function renderInline(text: string): React.ReactNode {
   const parts = text.split(/(\*\*[^*]+\*\*|\[(?:IL|ML|SFL|BFL|ABL|SKV)[^\]]+\])/g)
   return parts.map((part, i) => {
@@ -240,7 +248,6 @@ export default function App() {
   const [history, setHistory]     = useState<HistoryItem[]>([])
   const [popular, setPopular]     = useState<{ question: string; count: number }[]>([])
   const [sessionId]               = useState(() => crypto.randomUUID())
-  // FIX 4: spåra antal frågor för uppgradera-nudge
   const [queryCount, setQueryCount] = useState(0)
   const FREE_LIMIT = 10
   const showUpgradeNudge = queryCount >= Math.floor(FREE_LIMIT * 0.7)
@@ -293,7 +300,7 @@ export default function App() {
     const newMessages: Message[] = [...messages, { role: 'user', content: q }]
     setMessages(newMessages)
     setLoading(true)
-    setQueryCount(c => c + 1) // FIX 4
+    setQueryCount(c => c + 1)
     const { data: { user } } = await supabase.auth.getUser()
     try {
       const res = await fetch('/api/chat', {
@@ -350,7 +357,6 @@ export default function App() {
         .suggestion-btn { padding: 16px 18px; border: 1px solid #E0DDD6; background: white; cursor: pointer; text-align: left; border-radius: 6px; transition: all .2s; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 18px; color: #333; line-height: 1.35; }
         .suggestion-btn:hover { border-color: #C0321A; background: #FDF9F8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(192,50,26,.07); }
 
-        /* FIX 1: knapp grå som standard, röd när aktiv */
         .send-btn { width: 40px; height: 40px; background: #D0CCC4; border: none; border-radius: 7px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background .2s, transform .15s; }
         .send-btn.active { background: #C0321A; }
         .send-btn.active:hover { background: #A02818; transform: translateY(-1px); }
@@ -367,7 +373,6 @@ export default function App() {
         .feedback-btn { width: 28px; height: 28px; border-radius: 5px; border: 1px solid #E0DDD6; background: white; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
         .feedback-btn:hover { border-color: #888; background: #F5F3EE; }
 
-        /* FIX 4: upgrade nudge */
         @keyframes slideDown { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
         .upgrade-nudge { animation: slideDown .3s both; }
 
@@ -409,14 +414,12 @@ export default function App() {
             </button>
           </div>
 
-          {/* FIX 4: Uppgradera-nudge visas när 70% av gratisgränsen är nådd */}
           {showUpgradeNudge && (
             <div className="upgrade-nudge" style={{ margin: '6px 10px 4px', padding: '11px 13px', background: 'linear-gradient(135deg, #FDF4F3 0%, #FAF0EE 100%)', border: '1px solid rgba(192,50,26,.2)', borderRadius: 7 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                 <span className="mono" style={{ fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#C0321A' }}>
                   {FREE_LIMIT - queryCount} frågor kvar
                 </span>
-                {/* mini progress bar */}
                 <div style={{ width: 48, height: 3, background: '#F0EDE6', borderRadius: 2, overflow: 'hidden' }}>
                   <div style={{ width: `${(queryCount / FREE_LIMIT) * 100}%`, height: '100%', background: '#C0321A', borderRadius: 2, transition: 'width .4s' }} />
                 </div>
@@ -453,15 +456,17 @@ export default function App() {
               <div className="mono" style={{ fontSize: 11, color: '#DDD', padding: '8px 10px', lineHeight: 1.7 }}>Dina frågor sparas här</div>
             ) : (
               history.map(item => {
-                const rc = getRiskColor(item.risk_level || '')
+                // ── FIX: läs risk ur svarstexten, inte från DB-kolumnen ──
+                const displayRisk = extractRiskLevel(item.answer) || item.risk_level || ''
+                const rc = getRiskColor(displayRisk)
                 return (
                   <div key={item.id} className="hist-item" onClick={() => loadFromHistory(item)}>
                     <div style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#333', lineHeight: 1.4, marginBottom: 3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{item.question}</div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       <div className="mono" style={{ fontSize: 10, color: '#CCC' }}>{timeAgo(item.created_at)}</div>
-                      {item.risk_level && (
+                      {displayRisk && (
                         <div className="mono" style={{ fontSize: 9, color: rc.text, background: rc.bg, border: `1px solid ${rc.border}`, padding: '1px 6px', borderRadius: 3 }}>
-                          {item.risk_level}
+                          {displayRisk}
                         </div>
                       )}
                     </div>
@@ -659,7 +664,6 @@ export default function App() {
                   t.style.height = Math.min(t.scrollHeight, 160) + 'px'
                 }}
               />
-              {/* FIX 1: röd när input har innehåll */}
               <button
                 className={`send-btn${input.trim() ? ' active' : ''}`}
                 onClick={() => sendMessage()}
