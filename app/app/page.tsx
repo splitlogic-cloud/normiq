@@ -526,9 +526,8 @@ export default function App() {
               {messages.map((m, i) => {
                 if (m.role === 'user') {
                   return (
-                    <div key={i} className="msg-in" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                      {/* FIX 2: Mindre padding + snävare max-width på chattbubblan */}
-                      <div className="cg" style={{ background: '#0A0A0C', color: 'white', padding: '11px 18px', borderRadius: '12px 12px 4px 12px', fontSize: 19, lineHeight: 1.35, maxWidth: '60%' }}>
+                    <div key={i} className="msg-in" style={{ display: 'flex', justifyContent: 'flex-end', paddingRight: 4 }}>
+                      <div className="cg" style={{ background: '#0A0A0C', color: 'white', padding: '11px 18px', borderRadius: '12px 12px 4px 12px', fontSize: 19, lineHeight: 1.35, maxWidth: '58%' }}>
                         {m.content}
                       </div>
                     </div>
