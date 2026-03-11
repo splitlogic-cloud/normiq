@@ -122,6 +122,7 @@ export default function Landing() {
           <a href="#funktioner" className="nav-link">Funktioner</a>
           <a href="#priser" className="nav-link">Priser</a>
           <a href="#faq" className="nav-link">FAQ</a>
+          <a href="/om-oss" className="nav-link">Om oss</a>
           <a href="/login" className="nav-link">Logga in</a>
           <a href="/register" className="btn-primary" style={{ padding: '10px 20px' }}>Testa gratis</a>
         </div>
@@ -467,8 +468,10 @@ export default function Landing() {
             normi<span style={{ color: '#C0321A' }}>q</span>
           </span>
           <div className="mono" style={{ fontSize: 11, color: '#444', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
+            <a href="/om-oss" style={{ color: '#444', textDecoration: 'none' }}>Om oss</a>
             <a href="/login" style={{ color: '#444', textDecoration: 'none' }}>Logga in</a>
             <a href="mailto:hej@normiq.se" style={{ color: '#444', textDecoration: 'none' }}>Kontakt</a>
+            <a href="/privacy" style={{ color: '#444', textDecoration: 'none' }}>Integritetspolicy</a>
             <span>© 2026 Normiq</span>
           </div>
           <div className="mono" style={{ fontSize: 10, color: '#333', letterSpacing: '.04em' }}>Konsultera alltid en skatteexpert.</div>
