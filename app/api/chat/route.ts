@@ -10,6 +10,52 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// ── RATE LIMITING ─────────────────────────────────────────────────────────
+// In-memory store — nollställs vid Vercel cold start, tillräckligt för MVP
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
+const RATE_LIMIT = 20        // max frågor per fönster
+const RATE_WINDOW = 60_000   // 1 minut i ms
+
+function checkRateLimit(sessionId: string): { allowed: boolean; remaining: number } {
+  const now = Date.now()
+  const entry = rateLimitStore.get(sessionId)
+
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(sessionId, { count: 1, resetAt: now + RATE_WINDOW })
+    return { allowed: true, remaining: RATE_LIMIT - 1 }
+  }
+
+  if (entry.count >= RATE_LIMIT) {
+    return { allowed: false, remaining: 0 }
+  }
+
+  entry.count++
+  return { allowed: true, remaining: RATE_LIMIT - entry.count }
+}
+
+// ── SVARSCACHE ────────────────────────────────────────────────────────────
+// Cachar identiska frågor i 1 timme — sparar Claude-kostnader vid upprepad trafik
+const answerCache = new Map<string, { answer: string; sources: string[]; risk_level: string; cachedAt: number }>()
+const CACHE_TTL = 60 * 60_000  // 1 timme
+
+function getCached(question: string) {
+  const key = question.trim().toLowerCase()
+  const entry = answerCache.get(key)
+  if (!entry) return null
+  if (Date.now() - entry.cachedAt > CACHE_TTL) { answerCache.delete(key); return null }
+  return entry
+}
+
+function setCached(question: string, answer: string, sources: string[], risk_level: string) {
+  const key = question.trim().toLowerCase()
+  answerCache.set(key, { answer, sources, risk_level, cachedAt: Date.now() })
+  // Rensa cache om den växer för stor (>500 entries)
+  if (answerCache.size > 500) {
+    const oldest = [...answerCache.entries()].sort((a, b) => a[1].cachedAt - b[1].cachedAt)[0]
+    answerCache.delete(oldest[0])
+  }
+}
+
 function classifyRisk(question: string, sources: { ref: string; text: string }[]): {
   level: 'LÅG' | 'MEDEL' | 'HÖG'
   reason: string
@@ -76,6 +122,31 @@ export async function POST(req: Request) {
   const lastQuestion = messages[messages.length - 1].content
   const questionType = detectQuestionType(lastQuestion)
   const useWebSearch = needsWebSearch(lastQuestion)
+
+  // ── RATE LIMIT ───────────────────────────────────────────────────────────
+  const id = sessionId || req.headers.get('x-forwarded-for') || 'anonymous'
+  const { allowed, remaining } = checkRateLimit(id)
+  if (!allowed) {
+    return Response.json(
+      { content: 'Du har ställt för många frågor på kort tid. Vänta en minut och försök igen.' },
+      { status: 429, headers: { 'X-RateLimit-Remaining': '0' } }
+    )
+  }
+
+  // ── CACHE ────────────────────────────────────────────────────────────────
+  if (!useWebSearch) {
+    const cached = getCached(lastQuestion)
+    if (cached) {
+      return Response.json({
+        content: cached.answer,
+        sources: cached.sources,
+        risk_level: cached.risk_level,
+        query_id: null,
+        verified: true,
+        from_cache: true,
+      }, { headers: { 'X-RateLimit-Remaining': String(remaining) } })
+    }
+  }
 
   // ── STEG 1: RETRIEVAL ────────────────────────────────────────────────────
   let retrievedSources: { ref: string; rubrik: string; text: string; similarity?: number }[] = []
@@ -189,7 +260,7 @@ REGLER:
   ] : []
 
   const response = await client.messages.create({
-    model: 'claude-opus-4-5',
+    model: 'claude-sonnet-4-5',
     max_tokens: 2000,
     system,
     ...(tools.length > 0 && { tools }),
@@ -209,6 +280,11 @@ REGLER:
   const finalAnswer = verified
     ? answer
     : answer + '\n\n_OBS: Svaret kunde inte verifieras fullt ut mot källtexterna. Kontrollera med originalkällan._'
+
+  // ── STEG 5b: CACHE SVAR ─────────────────────────────────────────────────
+  if (!useWebSearch) {
+    setCached(lastQuestion, finalAnswer, sourceRefs, risk.level)
+  }
 
   // ── STEG 6: SPARA ────────────────────────────────────────────────────────
   try {

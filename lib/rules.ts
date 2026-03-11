@@ -20,12 +20,16 @@ export const rules: Rule[] = [
   {
     ref: 'IL 16:2',
     rubrik: 'Representation — avdragsrätt',
-    text: 'Utgifter för representation är avdragsgilla om de har omedelbart samband med näringsverksamheten. Avdrag medges med högst 90 kronor per person och tillfälle exklusive moms för måltidsrepresentation. För kundgåvor medges avdrag med högst 300 kronor per person och år exklusive moms. För kultur och underhållning (teater, idrottsevenemang) medges avdrag med högst 180 kronor per person.',
+    text: 'Måltidsrepresentation (lunch, middag, supé) är INTE avdragsgill inkomstskattemässigt sedan 2017. Avdrag medges endast för enklare förtäring (kaffe, te, bullar, frukt, enklare smörgås som ej ersätter måltid) med högst 60 kr/person exkl. moms. Kundgåvor: max 300 kr/person/år exkl. moms. Kringkostnader (lokal, underhållning, teater, golf): max 180 kr/person exkl. moms. Representation måste ha omedelbart samband med näringsverksamheten.',
     regel: {
       typ: 'avdragsgräns',
       villkor: ['omedelbart samband med näringsverksamheten', 'ej privat karaktär'],
-      gräns: { belopp: 90, enhet: 'kr/person/tillfälle', exklMoms: true },
-      undantag: ['kundgåvor max 300 kr/person/år', 'kultur/underhållning max 180 kr/person'],
+      gräns: { belopp: 60, enhet: 'kr/person enklare förtäring exkl. moms' },
+      undantag: [
+        'måltid (lunch/middag/supé): 0 kr avdrag inkomstskattemässigt',
+        'kundgåvor max 300 kr/person/år exkl. moms',
+        'kringkostnader max 180 kr/person exkl. moms',
+      ],
       källa: 'IL 16 kap. 2 §',
     },
   },
@@ -33,12 +37,16 @@ export const rules: Rule[] = [
   {
     ref: 'ML 8:9',
     rubrik: 'Moms på representation',
-    text: 'Avdragsrätt för ingående moms vid representation föreligger på underlag upp till 90 kronor per person exklusive moms. Moms på alkohol är aldrig avdragsgill. Ingen momsavdragsrätt för kultur och underhållning.',
+    text: 'Momsavdrag vid representationsmåltid medges på underlag upp till 300 kr/person exkl. moms (ger ca 36 kr moms vid 12%, eller 46 kr om starköl ingår). Inkomstskattemässigt är måltiden ändå inte avdragsgill — men momsen får lyftas. Enklare förtäring: fullt momsavdrag upp till 60 kr/person. Kringkostnader: momsavdrag på underlag upp till 180 kr/person exkl. moms. Alkohol och sprit: aldrig momsavdragsgill.',
     regel: {
       typ: 'avdragsgräns',
-      villkor: ['representationen är avdragsgill'],
-      gräns: { belopp: 90, enhet: 'kr/person', exklMoms: true },
-      undantag: ['alkohol: ingen momsavdragsrätt', 'kultur/underhållning: ingen momsavdragsrätt'],
+      villkor: ['representationen har omedelbart samband med verksamheten', 'momspliktig verksamhet'],
+      gräns: { belopp: 300, enhet: 'kr/person momsbas måltid exkl. moms' },
+      undantag: [
+        'alkohol/sprit: ingen momsavdragsrätt',
+        'kringkostnader: max 180 kr/person momsbas exkl. moms',
+        'enklare förtäring: full momsavdragsrätt upp till 60 kr/person',
+      ],
       källa: 'ML 8 kap. 9 §',
     },
   },
@@ -56,25 +64,24 @@ export const rules: Rule[] = [
 
   {
     ref: 'IL 57:10',
-    rubrik: 'Fåmansbolag — gränsbelopp schablonmetoden',
-    text: 'Schablonbeloppet 2024: 204 325 kr (2,75 × IBB 74 300 kr). Schablonbeloppet 2025: 209 550 kr (2,75 × IBB 76 200 kr). Utdelning upp till gränsbeloppet beskattas som kapital med 20% (2/3 × 30%). Förenklingsregeln och huvudregeln kan inte kombineras samma år för samma bolag.',
+    rubrik: 'Fåmansbolag — grundbelopp (del av gränsbelopp)',
+    text: 'Grundbeloppet 2026: 4 IBB = 322 400 kr (IBB 2026 = 80 600 kr). Grundbeloppet tillfaller ägare av kvalificerade andelar vid årets ingång. Utdelning upp till gränsbeloppet beskattas som kapital med 20 %. Gränsbeloppet kan bestå av upp till fyra delar: (1) grundbelopp, (2) lönebaserat utrymme, (3) sparat utdelningsutrymme, (4) ränta på omkostnadsbelopp. OBS: Tidigare kallades grundbeloppet "schablonbelopp" och beräknades som 2,75 × IBB — denna regel gäller fr.o.m. 2026.',
     regel: {
       typ: 'schablonbelopp',
-      villkor: ['kvalificerad andel', 'fåmansbolag'],
-      gräns: { belopp: 209550, enhet: 'kr/år 2025', perPerson: false },
+      villkor: ['kvalificerad andel', 'fåmansbolag', 'ägde andelar vid årets ingång'],
+      gräns: { belopp: 322400, enhet: 'kr/år 2026', perPerson: false },
       satser: [{ namn: 'kapitalskatt på utdelning inom gränsbelopp', procent: 20 }],
-      undantag: ['kan ej kombineras med huvudregeln samma år'],
       källa: 'IL 57 kap. 10 §',
     },
   },
 
   {
     ref: 'IL 57:11',
-    rubrik: 'Fåmansbolag — gränsbelopp huvudregeln',
-    text: 'Gränsbelopp = omkostnadsbeloppet × (statslåneräntan + 9%) + lönebaserat utrymme. Lönebaserat utrymme = 50% av kontanta löner i bolaget. Krav på löneuttag: lägst det lägsta av 9,6 IBB (713 280 kr 2024) eller 6 IBB + 5% av totala löner.',
+    rubrik: 'Fåmansbolag — lönebaserat utrymme (del av gränsbelopp)',
+    text: 'Lönebaserat utrymme 2026: 50% av (totala kontanta löner i bolaget − 8 IBB). 8 IBB 2026 = 644 800 kr. Om bolaget betalat ut löner understigande 644 800 kr finns inget lönebaserat utrymme. Ränta på omkostnadsbelopp: om omkostnadsbeloppet överstiger 100 000 kr får den överskjutande delen räknas upp med statslåneräntan + 9 procentenheter. Sparat utdelningsutrymme räknas upp med statslåneräntan + 3 procentenheter varje år.',
     regel: {
       typ: 'villkor',
-      villkor: ['löneuttag minst 9,6 IBB eller 6 IBB + 5% av totala löner', 'kvalificerad andel'],
+      villkor: ['löner överstiger 644 800 kr (8 IBB 2026)', 'kvalificerad andel'],
       källa: 'IL 57 kap. 11 §',
     },
   },
@@ -82,7 +89,7 @@ export const rules: Rule[] = [
   {
     ref: 'IL 57:20',
     rubrik: 'Fåmansbolag — utdelning över gränsbeloppet',
-    text: 'Utdelning över gränsbeloppet beskattas som tjänst, max 90 IBB (6 687 000 kr 2024) per person. Belopp däröver beskattas som kapital med 30%. Sparat utdelningsutrymme räknas upp med statslåneräntan + 3 procentenheter.',
+    text: 'Utdelning över gränsbeloppet beskattas som tjänst, max 90 IBB per person. Belopp däröver beskattas som kapital med 30%. Sparat utdelningsutrymme räknas upp med statslåneräntan + 3 procentenheter.',
     regel: {
       typ: 'skattesats',
       villkor: ['utdelning överstiger gränsbeloppet'],
@@ -111,13 +118,40 @@ export const rules: Rule[] = [
 
   {
     ref: 'SKV 3:12',
-    rubrik: 'Fåmansbolag — lön eller utdelning, praktisk guide',
-    text: 'Optimalt löneuttag för att maximera lönebaserat utrymme: ta ut lön motsvarande 6 IBB + 5% av totala löner, men minst 9,6 IBB (713 280 kr 2024). Utdelning upp till gränsbeloppet beskattas med 20%. Spara utdelningsutrymme om du inte behöver pengarna i år.',
+    rubrik: 'Fåmansbolag — praktisk guide utdelning 2026',
+    text: 'Gränsbeloppet består av upp till fyra delar: (1) Grundbelopp: 4 IBB = 322 400 kr (alla kvalificerade ägare). (2) Lönebaserat utrymme: 50% av löner över 644 800 kr (8 IBB). (3) Sparat utdelningsutrymme från tidigare år (uppräknat med SLR + 3%). (4) Ränta på omkostnadsbelopp över 100 000 kr (SLR + 9%). Förutsättningar: andelar ägda vid årets ingång, beslut på bolagsstämma. Utdelning inom gränsbeloppet: 20% skatt. Utdelning över: tjänsteskatt upp till 90 IBB, därefter 30% kapital.',
     regel: {
       typ: 'schablonbelopp',
-      villkor: ['fåmansbolag', 'aktiv ägare'],
-      gräns: { belopp: 713280, enhet: 'kr minimiuttag 2024' },
+      villkor: ['fåmansbolag', 'aktiv ägare', 'kvalificerade andelar vid årets ingång'],
       källa: 'SKV 3:12',
+    },
+  },
+
+  {
+    ref: 'IL 57:ÖVERSIKT',
+    rubrik: '3:12 — utdelningsutrymme, alla fyra delar (2026)',
+    text: `Gränsbeloppet för lågbeskattad utdelning (20% kapitalskatt) består av upp till fyra delar:
+
+1. GRUNDBELOPP: 4 IBB = 322 400 kr (IBB 2026 = 80 600 kr). Tillfaller alla som äger kvalificerade andelar vid årets ingång.
+
+2. LÖNEBASERAT UTRYMME: (Totala kontanta löner i bolaget − 644 800 kr) × 50%. Om bolaget betalat ut mindre än 644 800 kr (8 IBB) finns inget lönebaserat utrymme.
+
+3. SPARAT UTDELNINGSUTRYMME: Outnyttjat gränsbelopp från tidigare år rullar vidare och räknas upp med statslåneräntan + 3 procentenheter varje år.
+
+4. RÄNTA PÅ OMKOSTNADSBELOPP: Om omkostnadsbeloppet (normalt = aktiekapitalet) överstiger 100 000 kr får den överskjutande delen räknas upp med statslåneräntan + 9 procentenheter.
+
+FÖRUTSÄTTNINGAR: (a) Kvalificerade andelar i fåmansföretag (≤4 delägare med >50% av rösterna). (b) Andelarna ägda vid årets ingång. (c) Utdelning beslutas på årsstämma eller extra bolagsstämma.
+
+Utdelning ÖVER gränsbeloppet beskattas som tjänst upp till 90 IBB, därefter 30% kapital.`,
+    regel: {
+      typ: 'villkor',
+      villkor: ['kvalificerade andelar', 'fåmansföretag', 'ägde andelar vid årets ingång'],
+      satser: [
+        { namn: 'utdelning inom gränsbeloppet', procent: 20 },
+        { namn: 'utdelning över gränsbeloppet (tjänst, max 90 IBB)', procent: 52 },
+        { namn: 'utdelning över 90 IBB', procent: 30 },
+      ],
+      källa: 'IL 57 kap. 10–20 §§',
     },
   },
 
@@ -152,10 +186,10 @@ export const rules: Rule[] = [
   {
     ref: 'SFL 3:1',
     rubrik: 'F-skatt — regler och egenavgifter',
-    text: 'F-skatt innebär att innehavaren betalar sin egen preliminärskatt och egenavgifter. Utbetalaren gör inte skatteavdrag. Egenavgifter 2024: 28,97% på aktiv näringsverksamhet.',
+    text: 'F-skatt innebär att innehavaren betalar sin egen preliminärskatt och egenavgifter. Utbetalaren gör inte skatteavdrag. Egenavgifter 2026: 28,97% på aktiv näringsverksamhet.',
     regel: {
       typ: 'skattesats',
-      satser: [{ namn: 'egenavgifter aktiv näringsverksamhet 2024', procent: 28.97 }],
+      satser: [{ namn: 'egenavgifter aktiv näringsverksamhet 2026', procent: 28.97 }],
       källa: 'SFL 3 kap. 1 §',
     },
   },
@@ -216,11 +250,17 @@ export const rules: Rule[] = [
   {
     ref: 'BFN K2',
     rubrik: 'K2 — när det gäller och förenklingsregler',
-    text: 'K2 (BFNAR 2016:10) gäller för mindre aktiebolag och ekonomiska föreningar. Förenklingar: ingen komponentavskrivning, periodisering ej nödvändig under 5 000 kr (7 000 kr fr.o.m. 2026), schablonmässiga avskrivningar.',
+    text: 'K2 (BFNAR 2016:10) gäller för mindre aktiebolag och ekonomiska föreningar. Förenklingar: ingen komponentavskrivning, periodisering ej nödvändig under 7 000 kr (fr.o.m. 2026, tidigare 5 000 kr), schablonmässiga avskrivningar. OBS: vissa företag får inte längre tillämpa K2 fr.o.m. räkenskapsår efter 31 dec 2025 — se BFN BFNAR 2025:3.',
     regel: {
       typ: 'klassificering',
       villkor: ['mindre aktiebolag', 'ej moderbolag i koncern', 'max 50 anställda eller max 40 Mkr balansomslutning eller max 80 Mkr omsättning'],
-      gräns: { belopp: 5000, enhet: 'kr periodiseringsgräns (7 000 kr fr.o.m. 2026)' },
+      gräns: { belopp: 7000, enhet: 'kr periodiseringsgräns fr.o.m. 2026' },
+      undantag: [
+        'bostadsrättsföreningar → K3 obligatoriskt fr.o.m. 2026',
+        'fastighetsbolag ≥75% omsättning → K3 fr.o.m. 2026',
+        'utländska filialer → K3 fr.o.m. 2026',
+        'kryptotillgångar → K3 fr.o.m. 2026',
+      ],
       källa: 'BFNAR 2016:10',
     },
   },
@@ -228,18 +268,38 @@ export const rules: Rule[] = [
   {
     ref: 'BFN K3',
     rubrik: 'K3 — när det gäller och skillnader mot K2',
-    text: 'K3 (BFNAR 2012:1) är huvudregelverket. Måste användas av: större företag, moderbolag i koncern, företag som väljer bort K2. Kräver komponentavskrivning på byggnader, uppskjuten skatt ska redovisas.',
+    text: 'K3 (BFNAR 2012:1) är huvudregelverket. Måste användas av: större företag, moderbolag i koncern, företag som väljer bort K2. Fr.o.m. räkenskapsår efter 31 dec 2025 även obligatoriskt för bostadsrättsföreningar, fastighetsbolag med ≥75% omsättning från byggnader, bolag med utländska filialer och bolag med kryptotillgångar. Kräver komponentavskrivning på byggnader, uppskjuten skatt ska redovisas.',
     regel: {
       typ: 'klassificering',
-      villkor: ['större företag', 'eller moderbolag i koncern', 'eller frivilligt val'],
+      villkor: ['större företag', 'eller moderbolag i koncern', 'eller frivilligt val', 'eller obligatorisk övergång fr.o.m. 2026'],
       källa: 'BFNAR 2012:1',
+    },
+  },
+
+  {
+    ref: 'BFN BFNAR 2025:3',
+    rubrik: 'K2 → K3-övergång 2026 — obligatorisk för vissa företag',
+    text: 'Fr.o.m. räkenskapsår som inleds efter 31 dec 2025 får följande företag INTE längre tillämpa K2 utan måste byta till K3: (1) Bostadsrättsföreningar och bostadsföreningar. (2) Fastighetsbolag där byggnader normalt genererar ≥75% av nettoomsättningen. (3) Företag med en eller flera utländska filialer. (4) Företag som haft kryptotillgångar (direkta innehav). Nystartade företag efter 30 juni 2025 vars räkenskapsår avslutas 31 dec 2026 eller senare ska tillämpa K3 direkt. Periodiseringsgränsen i K2 höjs till 7 000 kr fr.o.m. 2026.',
+    regel: {
+      typ: 'villkor',
+      villkor: [
+        'Bostadsrättsföreningar → K3 obligatoriskt fr.o.m. 2026',
+        'Fastighetsbolag ≥75% omsättning från byggnader → K3',
+        'Bolag med utländska filialer → K3',
+        'Bolag med kryptotillgångar (direkta innehav) → K3',
+      ],
+      undantag: [
+        'Lättnadsregeln för vissa små fastighetsbolag',
+        'Bostadsaktiebolag (ej bostadsrättsföreningar) — omfattas ej av tvångsbyte',
+      ],
+      källa: 'BFNAR 2025:3, BFNAR 2016:10',
     },
   },
 
   {
     ref: 'BFN K2',
     rubrik: 'K2 — avskrivningar och nyttjandeperioder',
-    text: 'Byggnader: 2% per år (hyreshus) eller 4% (industri). Inventarier: 20% per år linjärt. Datorer: 3-5 år. Immateriella tillgångar: max 5 år. Goodwill: max 10 år. Inventarier under halvt prisbasbelopp (26 250 kr 2024) får dras av omedelbart.',
+    text: 'Byggnader: 2% per år (hyreshus) eller 4% (industri). Inventarier: 20% per år linjärt. Datorer: 3–5 år. Immateriella tillgångar: max 5 år. Goodwill: max 10 år. Inventarier under halvt prisbasbelopp (ca 26 250 kr) får dras av omedelbart.',
     regel: {
       typ: 'avdragsgräns',
       satser: [
@@ -247,7 +307,7 @@ export const rules: Rule[] = [
         { namn: 'industrifastighet', procent: 4 },
         { namn: 'inventarier linjärt', procent: 20 },
       ],
-      gräns: { belopp: 26250, enhet: 'kr direktavdrag inventarier 2024' },
+      gräns: { belopp: 26250, enhet: 'kr direktavdrag inventarier' },
       källa: 'BFNAR 2016:10 p.10',
     },
   },
@@ -275,10 +335,10 @@ export const rules: Rule[] = [
   {
     ref: 'BAS Kontering',
     rubrik: 'Kontering — lön och arbetsgivaravgifter',
-    text: 'Bruttolön bokförs: Debet 7010 Löner, Kredit 2710 Personalskatt + Kredit 1930 Nettolön. Arbetsgivaravgifter 31,42% (2024): Debet 7510, Kredit 2730.',
+    text: 'Bruttolön bokförs: Debet 7010 Löner, Kredit 2710 Personalskatt + Kredit 1930 Nettolön. Arbetsgivaravgifter 31,42% (2026): Debet 7510, Kredit 2730.',
     regel: {
       typ: 'kontering',
-      satser: [{ namn: 'arbetsgivaravgift 2024', procent: 31.42 }],
+      satser: [{ namn: 'arbetsgivaravgift 2026', procent: 31.42 }],
       källa: 'BAS Kontering',
     },
   },
@@ -296,12 +356,13 @@ export const rules: Rule[] = [
   {
     ref: 'BAS Kontering',
     rubrik: 'Kontering — representation',
-    text: 'Avdragsgill representation (max 90 kr/person exkl. moms): Debet 6072, Debet 2640 (moms). Ej avdragsgill del: Debet 6071. Bokför alltid avdragsgill och ej avdragsgill del på separata konton.',
+    text: 'Måltidsrepresentation (lunch/middag): INGEN inkomstskatteavdragsrätt. Momsavdrag medges på underlag upp till 300 kr/person exkl. moms (ca 36 kr moms per person). Bokför hela beloppet på konto 6071 (ej avdragsgill). Ingående moms på 2640. Enklare förtäring (kaffe, bullar — max 60 kr/person exkl. moms): Debet 6072 + Debet 2640 moms, Kredit 1930/2440. Kringkostnader lokal/underhållning (max 180 kr/person exkl. moms): Debet 6072 + Debet 2640.',
     regel: {
       typ: 'kontering',
-      villkor: ['dela upp på konto 6071 och 6072'],
-      gräns: { belopp: 90, enhet: 'kr/person avdragsgill del exkl. moms' },
-      källa: 'BAS Kontering',
+      villkor: ['måltid → 6071 (ej avdragsgill)', 'enklare förtäring max 60 kr/person → 6072', 'kringkostnader max 180 kr/person → 6072'],
+      gräns: { belopp: 60, enhet: 'kr/person avdragsgill enklare förtäring exkl. moms' },
+      undantag: ['måltid: 0 kr inkomstskatteavdrag, men momsavdrag på 300 kr/person', 'kringkostnader max 180 kr/person på 6072'],
+      källa: 'BAS Kontering, IL 16 kap. 2 §, ML 8 kap. 9 §',
     },
   },
 
@@ -311,7 +372,7 @@ export const rules: Rule[] = [
     text: 'Köp av inventarie (över 26 250 kr): Debet 1220 Inventarier, Debet 2640 Moms, Kredit 1930. Årets avskrivning 20%: Debet 7832, Kredit 1229. Under 26 250 kr: Debet 5410 direktavdrag.',
     regel: {
       typ: 'kontering',
-      gräns: { belopp: 26250, enhet: 'kr gräns direktavdrag 2024' },
+      gräns: { belopp: 26250, enhet: 'kr gräns direktavdrag' },
       källa: 'BAS Kontering',
     },
   },
@@ -334,7 +395,6 @@ export const rules: Rule[] = [
     regel: {
       typ: 'avdragsgräns',
       gräns: { belopp: 25, enhet: '% av skattemässig vinst' },
-      tidsgräns: 6,
       källa: 'IL 30 kap.',
     } as Regel & { tidsgräns: number },
   },
@@ -342,10 +402,10 @@ export const rules: Rule[] = [
   {
     ref: 'BAS Kontering',
     rubrik: 'Kontering — periodisering i bokslut',
-    text: 'Upplupen intäkt: Debet 1790, Kredit 3xxx. Förutbetald intäkt: Debet 3xxx, Kredit 2990. Upplupen kostnad: Debet 5xxx-7xxx, Kredit 2990. Förutbetald kostnad: Debet 1790, Kredit 5xxx-7xxx. I K2: poster under 5 000 kr behöver ej periodiseras.',
+    text: 'Upplupen intäkt: Debet 1790, Kredit 3xxx. Förutbetald intäkt: Debet 3xxx, Kredit 2990. Upplupen kostnad: Debet 5xxx-7xxx, Kredit 2990. Förutbetald kostnad: Debet 1790, Kredit 5xxx-7xxx. I K2: poster under 7 000 kr behöver ej periodiseras (fr.o.m. 2026, tidigare 5 000 kr).',
     regel: {
       typ: 'kontering',
-      gräns: { belopp: 5000, enhet: 'kr K2-gräns periodisering' },
+      gräns: { belopp: 7000, enhet: 'kr K2-gräns periodisering fr.o.m. 2026' },
       källa: 'BFNAR 2016:10 p.7',
     },
   },
@@ -367,7 +427,7 @@ export const rules: Rule[] = [
     text: 'Avsättning egenavgifter i bokslut: Debet 7570, Kredit 2930. Beräkning: Nettoinkomst × 28,97%. Avdrag med 25% schablon.',
     regel: {
       typ: 'skattesats',
-      satser: [{ namn: 'egenavgifter 2024', procent: 28.97 }],
+      satser: [{ namn: 'egenavgifter 2026', procent: 28.97 }],
       källa: 'SFL 3 kap. 1 §',
     },
   },
@@ -396,10 +456,10 @@ export const rules: Rule[] = [
   {
     ref: 'BAS Kontering',
     rubrik: 'Kontering — milersättning och fordonskostnader',
-    text: 'Skattefri milersättning 2024: 25 kr/mil. Debet 7331, Kredit 1930. Leasingbil: Debet 5612, Kredit 1930/2440.',
+    text: 'Skattefri milersättning 2026: 25 kr/mil (egen bil). Debet 7331, Kredit 1930. Leasingbil: Debet 5612, Kredit 1930/2440.',
     regel: {
       typ: 'avdragsgräns',
-      gräns: { belopp: 25, enhet: 'kr/mil skattefri ersättning 2024' },
+      gräns: { belopp: 25, enhet: 'kr/mil skattefri ersättning 2026' },
       källa: 'IL 12 kap. 5 §',
     },
   },
@@ -424,17 +484,6 @@ export const rules: Rule[] = [
       typ: 'villkor',
       villkor: ['full täckning av bundet eget kapital', 'försvarligt med hänsyn till verksamheten'],
       källa: 'ABL 17 kap. 3 §',
-    },
-  },
-
-  {
-    ref: 'BFN K2/K3',
-    rubrik: 'K2 till K3-övergång 2026',
-    text: 'Från räkenskapsår efter 31 dec 2025 får vissa företag inte längre tillämpa K2. Bostadsrättsföreningar måste tillämpa K3 från 2026. Fastighetsbolag där byggnader ger mer än 75% av omsättningen måste byta. Övriga mindre aktiebolag kan fortsätta med K2.',
-    regel: {
-      typ: 'klassificering',
-      villkor: ['bostadsrättsföreningar', 'fastighetsbolag >75% byggnader av omsättning'],
-      källa: 'BFNAR 2012:1 / BFNAR 2016:10',
     },
   },
 ]
@@ -487,25 +536,43 @@ export function checkRule(regeltyp: string, params: Record<string, number>): Che
 
   // Representation
   if (lowerTyp.includes('representation')) {
-    const regel = rules.find(r => r.ref === 'IL 16:2')
-    const gräns = 90
     const perPerson = params.belopp / (params.antalPersoner || 1)
-    return {
-      godkänd: perPerson <= gräns,
-      regel: 'IL 16:2 Representation',
-      gräns,
-      faktiskt: Math.round(perPerson),
-      enhet: 'kr/person exkl. moms',
-      meddelande: perPerson <= gräns
-        ? `✓ Inom avdragsgräns (${Math.round(perPerson)} kr/person <= ${gräns} kr)`
-        : `Över avdragsgräns (${Math.round(perPerson)} kr/person > ${gräns} kr). Överskott bokförs på 6071.`,
-      källa: regel?.regel?.källa || 'IL 16 kap. 2 §',
+    const momsbas = 300
+    const enklFörtäringGräns = 60
+    const ärMåltid = params.måltid === 1 || perPerson > enklFörtäringGräns
+
+    if (ärMåltid) {
+      // Måltid — ej avdragsgill inkomstskatt, men momsavdrag på max 300 kr/person
+      const momsAvdrag = Math.round(Math.min(perPerson, momsbas) * 0.12)
+      const antal = params.antalPersoner || 1
+      return {
+        godkänd: false, // aldrig avdragsgill inkomstskatt för måltid
+        regel: 'IL 16:2 Representation — måltid',
+        gräns: 0,
+        faktiskt: Math.round(perPerson),
+        enhet: 'kr/person (0 kr inkomstskatteavdrag)',
+        meddelande: `⚠ Måltidsrepresentation är ej avdragsgill inkomstskattemässigt (sedan 2017). Bokför hela beloppet på konto 6071. Momsavdrag medges på max 300 kr/person exkl. moms (ca ${momsAvdrag} kr moms/person = ${momsAvdrag * antal} kr totalt för ${antal} person${antal > 1 ? 'er' : ''}). Total kostnad: ${Math.round(perPerson * antal)} kr.`,
+        källa: 'IL 16 kap. 2 §, ML 8 kap. 9 §',
+      }
+    } else {
+      // Enklare förtäring
+      const antal = params.antalPersoner || 1
+      return {
+        godkänd: perPerson <= enklFörtäringGräns,
+        regel: 'IL 16:2 Representation — enklare förtäring',
+        gräns: enklFörtäringGräns,
+        faktiskt: Math.round(perPerson),
+        enhet: 'kr/person exkl. moms',
+        meddelande: perPerson <= enklFörtäringGräns
+          ? `✓ Inom avdragsgräns för enklare förtäring (${Math.round(perPerson)} kr/person ≤ ${enklFörtäringGräns} kr exkl. moms). Bokför på konto 6072.`
+          : `⚠ Över gräns för enklare förtäring (${Math.round(perPerson)} kr/person > ${enklFörtäringGräns} kr). Del upp till ${enklFörtäringGräns} kr/person på 6072, överskott på 6071.`,
+        källa: 'IL 16 kap. 2 §',
+      }
     }
   }
 
   // Milersättning
   if (lowerTyp.includes('mil') || lowerTyp.includes('körning')) {
-    const regel = rules.find(r => r.ref === 'BAS Kontering' && r.rubrik.includes('milersättning'))
     const gräns = 25
     const ersättning = params.ersättningPerMil || params.belopp
     return {
@@ -515,9 +582,9 @@ export function checkRule(regeltyp: string, params: Record<string, number>): Che
       faktiskt: ersättning,
       enhet: 'kr/mil',
       meddelande: ersättning <= gräns
-        ? `✓ Inom skattefri gräns (${ersättning} kr/mil <= ${gräns} kr)`
-        : `Över skattefri gräns (${ersättning} kr/mil > ${gräns} kr). Överskott är skattepliktig förmån.`,
-      källa: regel?.regel?.källa || 'IL 12 kap. 5 §',
+        ? `✓ Inom skattefri gräns (${ersättning} kr/mil ≤ ${gräns} kr/mil)`
+        : `⚠ Över skattefri gräns (${ersättning} kr/mil > ${gräns} kr/mil). Överskott ${ersättning - gräns} kr/mil är skattepliktig lön.`,
+      källa: 'IL 12 kap. 5 §',
     }
   }
 
@@ -526,7 +593,7 @@ export function checkRule(regeltyp: string, params: Record<string, number>): Che
     const gräns = 0.25
     const vinst = params.skattemässigVinst || params.belopp
     const avsättning = params.avsättning
-    const maxAvsättning = vinst * gräns
+    const maxAvsättning = Math.round(vinst * gräns)
     return {
       godkänd: avsättning <= maxAvsättning,
       regel: 'IL 30 kap. Periodiseringsfond',
@@ -534,8 +601,8 @@ export function checkRule(regeltyp: string, params: Record<string, number>): Che
       faktiskt: avsättning,
       enhet: 'kr (max 25% av skattemässig vinst)',
       meddelande: avsättning <= maxAvsättning
-        ? `✓ Inom gräns (${avsättning} kr <= ${maxAvsättning} kr)`
-        : `Över gräns (${avsättning} kr > ${maxAvsättning} kr max).`,
+        ? `✓ Inom gräns. Avsättning ${avsättning} kr ≤ max ${maxAvsättning} kr (25% av ${vinst} kr). Debet 8811, Kredit 2120.`
+        : `⚠ Över gräns. ${avsättning} kr > max ${maxAvsättning} kr (25% av ${vinst} kr). Minska avsättningen med ${avsättning - maxAvsättning} kr.`,
       källa: 'IL 30 kap.',
     }
   }
