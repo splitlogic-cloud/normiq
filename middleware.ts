@@ -5,7 +5,15 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Publika rutter — ingen autentisering krävs
-  const publicPaths = ['/landing', '/login', '/register', '/api']
+  const publicPaths = [
+    '/landing',
+    '/login',
+    '/register',
+    '/api',
+    '/om-oss',
+    '/privacy',
+    '/auth',
+  ]
   const isPublic = publicPaths.some(p => pathname.startsWith(p))
 
   // Redirect / till /landing
