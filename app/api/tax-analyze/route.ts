@@ -72,10 +72,8 @@ function calculateAmounts(amount: number, vatRate: number, vatIncluded: boolean)
 // ── HARD OVERRIDE: deterministiska regler som aldrig åsidosätts av AI ───
 function applyHardRules(result: TaxAnalyzeOutput, net: number, vat: number): TaxAnalyzeOutput {
   // 1. Beloppsgräns förbrukningsinventarier — koden bestämmer, inte Claude
-  const isInventarie = result.account === '1220' || result.account === '1221'
-  const isForbr = result.account === '5410' || result.account === '5411'
-
-  if (isInventarie || isForbr) {
+  const isInventarieKonto = ['1220', '1221', '5410', '5411'].includes(result.account)
+  if (isInventarieKonto) {
     if (net <= BELOPPSGRANSEN_2026) {
       result.account = '5410'
       result.account_name = 'Förbrukningsinventarier'
@@ -87,15 +85,20 @@ function applyHardRules(result: TaxAnalyzeOutput, net: number, vat: number): Tax
     }
   }
 
-  // 2. Belopp — lita aldrig på att Claude räknar rätt
+  // 2. Representation — alltid konto 6072 (ej avdragsgill), aldrig 6071
+  //    Moms aldrig avdragsgill, ingen avdragsrätt i inkomstskatt
+  const isRepresentation = ['6071', '6072', '7690'].includes(result.account)
+  if (isRepresentation) {
+    result.account = result.account === '7690' ? '7690' : '6072'
+    result.account_name = result.account === '7690' ? 'Övriga personalkostnader' : 'Representation, ej avdragsgill'
+    result.vat_account = '2645'   // ej avdragsgill ingående moms
+    result.deductible = false
+    result.deductible_percent = 0
+  }
+
+  // 3. Belopp — lita aldrig på att Claude räknar rätt
   result.net_amount = net
   result.vat_amount = vat
-
-  // 3. Representation — moms aldrig fullt avdragsgill
-  if (result.account === '6072' || result.account === '7690') {
-    result.vat_account = '2645' // ej avdragsgill moms
-    result.deductible_percent = Math.min(result.deductible_percent, 0) // ej avdrag inkomstskatt
-  }
 
   return result
 }
@@ -116,12 +119,13 @@ MOMSREGLER:
 - Blandad användning privat/tjänst: konto 2640
 
 VANLIGA KONTON (BAS-kontoplan):
-- Datorer/IT: 5410 (förbrukningsinv.) eller 1220 (inventarier) — välj baserat på typ
+- Datorer/IT förbrukningsinv.: 5410
+- Datorer/IT inventarier: 1220
 - Programvaror engångsköp: 5420
 - SaaS/licenser löpande: 5420
 - Telefon/abonnemang: 5250
 - Kontorsmaterial: 6110
-- Representation extern: 6072
+- Representation (alltid ej avdragsgill): 6072
 - Representation intern: 7690
 - Hyra lokal: 5010
 - Resor inrikes: 5810
@@ -139,7 +143,7 @@ REGLER:
 2. Om privatanvändning är möjlig men ej angiven — MEDEL risk + warning
 3. Svara alltid på svenska i reasoning, risk_reason och warning
 4. lagrum ska vara en array av strängar, t.ex. ["IL 18 kap. 1 §", "ML 8 kap. 3 §"]
-5. OBS: konto och avskrivning för inventarier justeras automatiskt av systemet efter ditt svar
+5. Konto, avskrivning och momshantering justeras automatiskt av systemet efter ditt svar
 
 RETURNERA EXAKT DETTA JSON-FORMAT (inga andra fält, ingen text utanför JSON):
 {
@@ -276,7 +280,7 @@ Returnera JSON-analys.`
   return Response.json(result, {
     headers: {
       'Content-Type': 'application/json',
-      'X-Tax-Brain-Version': '1.2',
+      'X-Tax-Brain-Version': '1.3',
     }
   })
 }
