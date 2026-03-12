@@ -859,7 +859,8 @@ export default function App() {
                 )}
               </div>
 
-              <button className="run-btn" onClick={() => runAnalysis()} disabled={analyzeLoading || !analyzeDesc.trim() || !analyzeAmount}>
+              <button className="run-btn" onClick={() => runAnalysis()} disabled={analyzeLoading || !analyzeDesc.trim() || !analyzeAmount || (inputMode === 'kvitto' && !receiptParsed)}>
+
                 {analyzeLoading ? 'Analyserar...' : 'Analysera →'}
               </button>
 
