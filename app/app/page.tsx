@@ -27,6 +27,53 @@ const ANALYZE_EXAMPLES = [
 ]
 
 type AppMode = 'advisor' | 'analyze'
+type InputMode = 'fritext' | 'kvitto'
+
+// ── KVITTO-PARSER ─────────────────────────────────────────────────────────
+function parseReceipt(text: string): { description: string; amount: string; vat: string } {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
+
+  // Hitta belopp — leta efter "totalt", "att betala", "summa", eller största beloppet
+  const amountPatterns = [
+    /(?:totalt|att betala|total|summa|sum|charged|amount)[:\s]*(\d[\d\s.,]+)\s*(?:kr|sek|:-)?/i,
+    /(\d[\d\s.,]+)\s*(?:kr|sek|:-)?\s*$/i,
+  ]
+  let amount = ''
+  for (const pattern of amountPatterns) {
+    for (const line of lines) {
+      const match = line.match(pattern)
+      if (match) {
+        amount = match[1].replace(/\s/g, '').replace(',', '.')
+        break
+      }
+    }
+    if (amount) break
+  }
+
+  // Om ingen match — ta det största numret i texten
+  if (!amount) {
+    const allNumbers = text.match(/\d[\d\s.,]+/g) || []
+    const parsed = allNumbers.map(n => parseFloat(n.replace(/\s/g, '').replace(',', '.')))
+    const max = Math.max(...parsed.filter(n => n > 10 && n < 1000000))
+    if (max > 0) amount = String(max)
+  }
+
+  // Hitta momssats
+  let vat = '25'
+  if (/moms\s*6\s*%|6\s*%\s*moms/i.test(text)) vat = '6'
+  else if (/moms\s*12\s*%|12\s*%\s*moms/i.test(text)) vat = '12'
+  else if (/moms\s*0\s*%|0\s*%\s*moms|momsfri/i.test(text)) vat = '0'
+
+  // Hitta beskrivning — första meningsfulla raden (inte bara siffror/datum)
+  const descLine = lines.find(l =>
+    l.length > 3 &&
+    !/^\d{4}-\d{2}-\d{2}/.test(l) &&
+    !/^(\d[\d\s.,]+)\s*(kr|sek|:-)?$/i.test(l) &&
+    !/^(org\.?nr|moms\.?nr|kvitto|receipt|faktura)/i.test(l)
+  ) || lines[0] || ''
+
+  return { description: descLine, amount, vat }
+}
 
 type Message = {
   role: 'user' | 'assistant'
@@ -256,6 +303,9 @@ export default function App() {
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([])
   const [sessionId]               = useState(() => crypto.randomUUID())
 
+  const [inputMode, setInputMode]         = useState<InputMode>('fritext')
+  const [receiptText, setReceiptText]     = useState('')
+  const [receiptParsed, setReceiptParsed] = useState(false)
   const [analyzeDesc, setAnalyzeDesc]     = useState('')
   const [analyzeAmount, setAnalyzeAmount] = useState('')
   const [analyzeVat, setAnalyzeVat]       = useState('25')
@@ -461,7 +511,7 @@ export default function App() {
 
           <div style={{ padding: '8px 10px 6px' }}>
             <button
-              onClick={() => { if (mode === 'advisor') setMessages([]); else { setAnalyzeResult(null); setAnalyzeDesc(''); setAnalyzeAmount('') } }}
+              onClick={() => { if (mode === 'advisor') setMessages([]); else { setAnalyzeResult(null); setAnalyzeDesc(''); setAnalyzeAmount(''); setReceiptText(''); setReceiptParsed(false) } }}
               style={{ width: '100%', padding: '9px 13px', background: '#F5F3EE', border: '1px solid #E0DDD6', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#666', cursor: 'pointer', textAlign: 'left', letterSpacing: '.06em', textTransform: 'uppercase', transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 8 }}
               onMouseEnter={e => { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}
               onMouseLeave={e => { e.currentTarget.style.background = '#F5F3EE'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = '#E0DDD6' }}
@@ -712,12 +762,70 @@ export default function App() {
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-                <div className="field-wrap">
-                  <div className="mono" style={{ fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#BBB', marginBottom: 5 }}>Beskrivning</div>
-                  <input value={analyzeDesc} onChange={e => setAnalyzeDesc(e.target.value)}
-                    placeholder="T.ex. MacBook Air, restaurang klientmöte, Slack..."
-                    style={{ width: '100%', border: 'none', background: 'transparent', fontFamily: 'Georgia, serif', fontSize: 15, color: '#1a1a1a' }} />
+
+                {/* Input mode toggle */}
+                <div style={{ display: 'flex', gap: 4, background: '#F0EDE6', borderRadius: 7, padding: 3, alignSelf: 'flex-start' }}>
+                  {(['fritext', 'kvitto'] as InputMode[]).map(m => (
+                    <button key={m} onClick={() => { setInputMode(m); setReceiptParsed(false) }}
+                      style={{ padding: '6px 14px', border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', transition: 'all .2s',
+                        background: inputMode === m ? 'white' : 'transparent',
+                        color: inputMode === m ? '#0A0A0C' : '#AAA',
+                        boxShadow: inputMode === m ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+                      }}>
+                      {m === 'fritext' ? 'Fritext' : 'Kvitto'}
+                    </button>
+                  ))}
                 </div>
+
+                {/* Fritext */}
+                {inputMode === 'fritext' && (
+                  <div className="field-wrap">
+                    <div className="mono" style={{ fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#BBB', marginBottom: 5 }}>Beskrivning</div>
+                    <input value={analyzeDesc} onChange={e => setAnalyzeDesc(e.target.value)}
+                      placeholder="T.ex. MacBook Air, restaurang klientmöte, Slack..."
+                      style={{ width: '100%', border: 'none', background: 'transparent', fontFamily: 'Georgia, serif', fontSize: 15, color: '#1a1a1a' }} />
+                  </div>
+                )}
+
+                {/* Kvitto */}
+                {inputMode === 'kvitto' && (
+                  <div>
+                    <div className="field-wrap" style={{ position: 'relative' }}>
+                      <div className="mono" style={{ fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#BBB', marginBottom: 5 }}>Klistra in kvittotext</div>
+                      <textarea
+                        value={receiptText}
+                        onChange={e => { setReceiptText(e.target.value); setReceiptParsed(false) }}
+                        placeholder={'Restaurang Pelikan\n2026-03-11\nMat & dryck\nTotalt: 1 800 kr inkl. 12% moms'}
+                        rows={5}
+                        style={{ width: '100%', border: 'none', background: 'transparent', fontFamily: 'DM Mono, monospace', fontSize: 12, color: '#333', lineHeight: 1.7, resize: 'vertical', minHeight: 100 }}
+                      />
+                    </div>
+                    {receiptText.trim() && !receiptParsed && (
+                      <button
+                        onClick={() => {
+                          const parsed = parseReceipt(receiptText)
+                          if (parsed.description) setAnalyzeDesc(parsed.description)
+                          if (parsed.amount) setAnalyzeAmount(parsed.amount)
+                          if (parsed.vat) setAnalyzeVat(parsed.vat)
+                          setReceiptParsed(true)
+                        }}
+                        style={{ marginTop: 8, width: '100%', padding: '9px', background: '#F5F3EE', border: '1px solid #E0DDD6', borderRadius: 7, fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#555', cursor: 'pointer', transition: 'all .2s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}
+                        onMouseLeave={e => { e.currentTarget.style.background = '#F5F3EE'; e.currentTarget.style.color = '#555'; e.currentTarget.style.borderColor = '#E0DDD6' }}
+                      >
+                        Tolka kvitto →
+                      </button>
+                    )}
+                    {receiptParsed && (
+                      <div style={{ marginTop: 8, padding: '10px 14px', background: '#EFF6F2', border: '1px solid #BFD9CC', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: '#2E6644', fontSize: 13 }}>✓</span>
+                        <span className="mono" style={{ fontSize: 10, color: '#2E6644' }}>Tolkat — kontrollera fälten nedan</span>
+                        <button onClick={() => setReceiptParsed(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#2E6644', cursor: 'pointer', fontFamily: 'DM Mono, monospace', fontSize: 10, opacity: 0.6 }}>ändra</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 10 }}>
                   <div className="field-wrap">
                     <div className="mono" style={{ fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#BBB', marginBottom: 5 }}>Belopp (inkl. moms)</div>
@@ -739,6 +847,16 @@ export default function App() {
                     </select>
                   </div>
                 </div>
+
+                {/* Beskrivning visas alltid när kvitto-läge och parsad */}
+                {inputMode === 'kvitto' && (
+                  <div className="field-wrap">
+                    <div className="mono" style={{ fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#BBB', marginBottom: 5 }}>Beskrivning (redigera vid behov)</div>
+                    <input value={analyzeDesc} onChange={e => setAnalyzeDesc(e.target.value)}
+                      placeholder="Extraheras automatiskt från kvittot..."
+                      style={{ width: '100%', border: 'none', background: 'transparent', fontFamily: 'Georgia, serif', fontSize: 15, color: '#1a1a1a' }} />
+                  </div>
+                )}
               </div>
 
               <button className="run-btn" onClick={() => runAnalysis()} disabled={analyzeLoading || !analyzeDesc.trim() || !analyzeAmount}>
