@@ -12,30 +12,30 @@ const supabase = createClient(
 
 // ── TYPER ────────────────────────────────────────────────────────────────
 export type TaxAnalyzeInput = {
-  description: string       // "Apple Store köp"
-  amount: number            // 24990 (inkl. moms om vat_included: true)
-  vat_rate?: number         // 25 | 12 | 6 | 0 — default 25
-  vat_included?: boolean    // true = beloppet inkluderar moms
-  entity_type?: string      // "AB" | "EF" | "HB" — default "AB"
-  country?: string          // "SE" — default "SE"
-  category_hint?: string    // frivillig ledtråd: "dator", "representation", "hyra"
+  description: string
+  amount: number
+  vat_rate?: number
+  vat_included?: boolean
+  entity_type?: string
+  country?: string
+  category_hint?: string
 }
 
 export type TaxAnalyzeOutput = {
-  account: string           // BAS-konto t.ex. "5410"
-  account_name: string      // "Förbrukningsinventarier"
-  vat_account: string       // "2641"
-  vat_amount: number        // beräknat momsbelopp i kr
-  net_amount: number        // belopp exkl. moms
-  deductible: boolean       // avdragsrätt ja/nej
-  deductible_percent: number // 0-100
-  depreciation_years: number | null  // null = ingen avskrivning
+  account: string
+  account_name: string
+  vat_account: string
+  vat_amount: number
+  net_amount: number
+  deductible: boolean
+  deductible_percent: number
+  depreciation_years: number | null
   risk: 'LÅG' | 'MEDEL' | 'HÖG'
   risk_reason: string
-  lagrum: string[]          // ["IL 18 kap. 1 §", "ML 8 kap. 3 §"]
-  confidence: number        // 0.0 - 1.0
-  reasoning: string         // kort motivering på svenska
-  warning?: string          // valfri varning om kantfall
+  lagrum: string[]
+  confidence: number
+  reasoning: string
+  warning?: string
 }
 
 // ── RATE LIMIT ───────────────────────────────────────────────────────────
@@ -67,7 +67,10 @@ function calculateAmounts(amount: number, vatRate: number, vatIncluded: boolean)
 }
 
 // ── SYSTEM PROMPT ────────────────────────────────────────────────────────
-function buildSystemPrompt(sources: string): string {
+function buildSystemPrompt(sources: string, netAmount: number): string {
+  const BELOPPSGRANSEN = 26250
+  const overGrans = netAmount > BELOPPSGRANSEN
+
   return `Du är Tax Brain — en skattemässig analysmotor för svenska företag.
 
 Din uppgift är att analysera en affärshändelse och returnera ett JSON-objekt.
@@ -76,25 +79,47 @@ Du får aldrig returnera något annat än JSON — inget preamble, inga förklar
 TILLGÄNGLIGA KÄLLOR:
 ${sources}
 
-REGLER:
-1. Använd alltid BAS-kontoplan (5-siffriga konton)
-2. Momskontor: 2640 (ingående moms 25%), 2641 (avdragsgill), 2645 (ej avdragsgill)
-3. Vanliga konton:
-   - Datorer/IT: 5410 (förbrukningsinv. <23 450 kr) eller 1220 (inventarier)
-   - Representation intern: 7690, extern: 6072 (avdrag 25% av moms, ej inkomstskatt)
-   - Telefon/abonnemang: 5250
-   - Kontorsmaterial: 6110
-   - Hyra lokal: 5010
-   - Lön: 7010
-   - Resor: 5810 (inrikes), 5830 (utrikes)
-   - Programvaror/SaaS: 5420 eller 1230 (licenser >1 år)
-4. Avskrivning: inventarier >23 450 kr skrivs av över 3-5 år (IL 18 kap)
-   Förbrukningsinventarier under beloppsgränsen kostnadsförs direkt
-5. Confidence: sätt lågt (0.5-0.7) om beskrivningen är vag eller kantfall finns
-6. Risk HÖG om: representation, bilförmån, blandad privat/tjänst, fåmansbolag-koppling
-7. Svara alltid på svenska i reasoning och risk_reason
+BELOPPSGRÄNS FÖRBRUKNINGSINVENTARIER 2025/2026:
+Gränsen är 26 250 kr EXKLUSIVE MOMS (ett halvt prisbasbelopp).
+Nettobeloppet för denna transaktion är ${netAmount} kr.
+${overGrans
+  ? `${netAmount} kr > 26 250 kr → AKTIVERA som inventarie → konto 1220, avskrivning 3-5 år.`
+  : `${netAmount} kr ≤ 26 250 kr → KOSTNADSFÖR direkt → konto 5410, depreciation_years: null.`
+}
+Blanda INTE ihop inkl. moms-beloppet med exkl. moms-beloppet vid denna bedömning.
 
-RETURNERA EXAKT DETTA JSON-FORMAT:
+MOMSREGLER:
+- Normalt avdragsgill ingående moms: konto 2641
+- Ej avdragsgill moms (t.ex. representation): konto 2645
+- Blandad användning: konto 2640
+
+VANLIGA KONTON (BAS-kontoplan):
+- Datorer/IT under gränsen: 5410 (förbrukningsinventarier)
+- Datorer/IT över gränsen: 1220 (inventarier)
+- Programvaror engångsköp: 5420
+- SaaS/licenser löpande: 5420
+- Telefon/abonnemang: 5250
+- Kontorsmaterial: 6110
+- Representation extern (avdrag 25% moms, ej inkomstskatt): 6072
+- Representation intern: 7690
+- Hyra lokal: 5010
+- Resor inrikes: 5810
+- Resor utrikes: 5830
+- Lön: 7010
+- Marknadsföring: 6410
+
+RISKBEDÖMNING:
+- LÅG: tydlig affärshändelse, ingen privat koppling, belopp under gränsen
+- MEDEL: viss osäkerhet, t.ex. dator som kan användas privat, representation
+- HÖG: tydlig privat koppling, fåmansbolag-frågor, bilförmån, oklart syfte
+
+REGLER:
+1. Sätt confidence lågt (0.5-0.7) om beskrivningen är vag
+2. Om privatanvändning är möjlig men inte angiven — sätt MEDEL och nämn det i warning
+3. Svara alltid på svenska i reasoning, risk_reason och warning
+4. lagrum ska vara en array av strängar
+
+RETURNERA EXAKT DETTA JSON-FORMAT (inga andra fält, ingen text utanför):
 {
   "account": "5410",
   "account_name": "Förbrukningsinventarier",
@@ -115,7 +140,6 @@ RETURNERA EXAKT DETTA JSON-FORMAT:
 
 // ── HUVUD-HANDLER ────────────────────────────────────────────────────────
 export async function POST(req: Request) {
-  // Auth-header (API-nyckel för externa integrationer)
   const apiKey = req.headers.get('x-api-key')
   const ip = req.headers.get('x-forwarded-for') || 'anonymous'
 
@@ -123,7 +147,6 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Rate limit exceeded' }, { status: 429 })
   }
 
-  // Parsa input
   let input: TaxAnalyzeInput
   try {
     input = await req.json()
@@ -131,7 +154,6 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  // Validera obligatoriska fält
   if (!input.description || typeof input.amount !== 'number') {
     return Response.json(
       { error: 'description (string) och amount (number) krävs' },
@@ -139,19 +161,15 @@ export async function POST(req: Request) {
     )
   }
 
-  // Defaults
   const vatRate     = input.vat_rate     ?? 25
   const vatIncluded = input.vat_included ?? true
   const entityType  = input.entity_type  ?? 'AB'
   const country     = input.country      ?? 'SE'
 
-  // Beräkna belopp
   const { net, vat } = calculateAmounts(input.amount, vatRate, vatIncluded)
 
-  // Bygg söksträng för RAG
   const searchQuery = `${input.description} ${input.category_hint || ''} bokföring kontering avdrag moms`.trim()
 
-  // Hämta relevanta källor
   let sourcesText = ''
   try {
     const vectorResults = await searchDocuments(searchQuery, 8)
@@ -171,26 +189,25 @@ export async function POST(req: Request) {
       .join('\n\n---\n\n')
   }
 
-  // Bygg user prompt
   const userPrompt = `Analysera denna affärshändelse:
 
 Beskrivning: ${input.description}
 Belopp (inkl. moms): ${input.amount} kr
-Netto: ${net} kr
+Netto (exkl. moms): ${net} kr
 Moms (${vatRate}%): ${vat} kr
 Bolagsform: ${entityType}
 Land: ${country}
 ${input.category_hint ? `Kategoriledtråd: ${input.category_hint}` : ''}
 
+Kom ihåg: beloppsgränsen bedöms på NETTO ${net} kr, inte på ${input.amount} kr.
 Returnera JSON-analys.`
 
-  // Anropa Claude
   let rawJson = ''
   try {
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 800,
-      system: buildSystemPrompt(sourcesText),
+      system: buildSystemPrompt(sourcesText, net),
       messages: [{ role: 'user', content: userPrompt }],
     })
 
@@ -204,7 +221,6 @@ Returnera JSON-analys.`
     return Response.json({ error: 'AI-anrop misslyckades', details: String(err) }, { status: 500 })
   }
 
-  // Parsa JSON
   let result: TaxAnalyzeOutput
   try {
     result = JSON.parse(rawJson)
@@ -215,11 +231,11 @@ Returnera JSON-analys.`
     )
   }
 
-  // Injicera beräknade belopp (lita inte på att AI räknar rätt)
+  // Injicera beräknade belopp — lita inte på att AI räknar rätt
   result.net_amount = net
   result.vat_amount = vat
 
-  // Spara i Supabase för analys
+  // Spara i Supabase
   try {
     await supabase.from('tax_analyses').insert({
       description: input.description,
@@ -231,13 +247,13 @@ Returnera JSON-analys.`
       created_at: new Date().toISOString(),
     })
   } catch {
-    // Logga men låt inte DB-fel stoppa svaret
+    // Låt inte DB-fel stoppa svaret
   }
 
   return Response.json(result, {
     headers: {
       'Content-Type': 'application/json',
-      'X-Tax-Brain-Version': '1.0',
+      'X-Tax-Brain-Version': '1.1',
     }
   })
 }
