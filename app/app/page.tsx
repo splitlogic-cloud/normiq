@@ -250,7 +250,7 @@ export default function App() {
   const [sessionId]               = useState(() => crypto.randomUUID())
   const [queryCount, setQueryCount] = useState(0)
   const FREE_LIMIT = 10
-  const showUpgradeNudge = queryCount >= Math.floor(FREE_LIMIT * 0.7)
+  const showUpgradeNudge          = false
   const bottomRef                 = useRef<HTMLDivElement>(null)
   const textareaRef               = useRef<HTMLTextAreaElement>(null)
   const supabase                  = createClient()
