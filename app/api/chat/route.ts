@@ -11,32 +11,25 @@ const supabase = createClient(
 )
 
 // ── RATE LIMITING ─────────────────────────────────────────────────────────
-// In-memory store — nollställs vid Vercel cold start, tillräckligt för MVP
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
-const RATE_LIMIT = 20        // max frågor per fönster
-const RATE_WINDOW = 60_000   // 1 minut i ms
+const RATE_LIMIT = 20
+const RATE_WINDOW = 60_000
 
 function checkRateLimit(sessionId: string): { allowed: boolean; remaining: number } {
   const now = Date.now()
   const entry = rateLimitStore.get(sessionId)
-
   if (!entry || now > entry.resetAt) {
     rateLimitStore.set(sessionId, { count: 1, resetAt: now + RATE_WINDOW })
     return { allowed: true, remaining: RATE_LIMIT - 1 }
   }
-
-  if (entry.count >= RATE_LIMIT) {
-    return { allowed: false, remaining: 0 }
-  }
-
+  if (entry.count >= RATE_LIMIT) return { allowed: false, remaining: 0 }
   entry.count++
   return { allowed: true, remaining: RATE_LIMIT - entry.count }
 }
 
 // ── SVARSCACHE ────────────────────────────────────────────────────────────
-// Cachar identiska frågor i 1 timme — sparar Claude-kostnader vid upprepad trafik
 const answerCache = new Map<string, { answer: string; sources: string[]; risk_level: string; cachedAt: number }>()
-const CACHE_TTL = 60 * 60_000  // 1 timme
+const CACHE_TTL = 60 * 60_000
 
 function getCached(question: string) {
   const key = question.trim().toLowerCase()
@@ -49,7 +42,6 @@ function getCached(question: string) {
 function setCached(question: string, answer: string, sources: string[], risk_level: string) {
   const key = question.trim().toLowerCase()
   answerCache.set(key, { answer, sources, risk_level, cachedAt: Date.now() })
-  // Rensa cache om den växer för stor (>500 entries)
   if (answerCache.size > 500) {
     const oldest = [...answerCache.entries()].sort((a, b) => a[1].cachedAt - b[1].cachedAt)[0]
     answerCache.delete(oldest[0])
@@ -68,7 +60,6 @@ function classifyRisk(question: string, sources: { ref: string; text: string }[]
     'internprissättning', 'cfc', 'utflyttning', 'fusion', 'likvidation',
     'omstrukturering', 'generationsskifte'
   ]
-
   const medelSignals = [
     'representation', 'förmån', 'bilförmån', 'tjänstebil', 'hemkontor',
     'periodisering', 'inkurans', 'nedskrivning', 'koncernbidrag',
@@ -82,12 +73,10 @@ function classifyRisk(question: string, sources: { ref: string; text: string }[]
   if (medelSignals.some(s => q.includes(s))) {
     return { level: 'MEDEL', reason: 'Tydliga regler men med vanliga undantag. Verifiera att grundförutsättningarna stämmer i ditt fall.' }
   }
-
   const sourceTexts = sources.map(s => s.text.toLowerCase()).join(' ')
   if (sourceTexts.includes('beroende på') || sourceTexts.includes('om') || sourceTexts.includes('kan')) {
     return { level: 'MEDEL', reason: 'Regelverket innehåller villkor som kan variera. Stäm av mot din specifika situation.' }
   }
-
   return { level: 'LÅG', reason: 'Tydlig regel med väldefinierat tillämpningsområde.' }
 }
 
@@ -115,6 +104,17 @@ function needsWebSearch(question: string): boolean {
     '2026', 'i år', 'aktuell', 'nuvarande', 'gäller nu'
   ]
   return årsbelopp.some(s => q.includes(s))
+}
+
+// ── KÄLLVIKTNING ─────────────────────────────────────────────────────────
+// SKV-vägledningar och praxis är mer praktiskt användbara än ren lagtext.
+// Vi boostar deras relevans så de inte drunknar i IL-massan.
+function boostScore(r: { metadata: { lag?: string }; similarity: number }): number {
+  const lag = r.metadata?.lag?.toLowerCase() || ''
+  if (lag.includes('skatteverket') || lag.includes('skv')) return r.similarity * 1.4
+  if (lag.includes('bfn') || lag.includes('normgivning'))   return r.similarity * 1.2
+  if (lag.includes('mervärdes'))                            return r.similarity * 1.1
+  return r.similarity
 }
 
 export async function POST(req: Request) {
@@ -149,13 +149,24 @@ export async function POST(req: Request) {
   }
 
   // ── STEG 1: RETRIEVAL ────────────────────────────────────────────────────
+  // Hämtar fler chunks (20) och boostar SKV/BFN/ML så de inte drunknar i IL
   let retrievedSources: { ref: string; rubrik: string; text: string; similarity?: number }[] = []
   let usedFallback = false
 
   try {
-    const vectorResults = await searchDocuments(lastQuestion, 12)
-    if (vectorResults && vectorResults.length > 0 && vectorResults[0].similarity > 0.15) {
-      retrievedSources = vectorResults.map((r: {
+    const vectorResults = await searchDocuments(lastQuestion, 20)
+
+    if (vectorResults && vectorResults.length > 0 && vectorResults[0].similarity > 0.2) {
+      // Sortera om med viktning
+      const boosted = vectorResults
+        .map((r: { content: string; metadata: { ref: string; rubrik: string; lag?: string }; similarity: number }) => ({
+          ...r,
+          boostedScore: boostScore(r),
+        }))
+        .sort((a: { boostedScore: number }, b: { boostedScore: number }) => b.boostedScore - a.boostedScore)
+        .slice(0, 14) // Ta de 14 bästa efter viktning
+
+      retrievedSources = boosted.map((r: {
         content: string
         metadata: { ref: string; rubrik: string }
         similarity: number
@@ -209,59 +220,58 @@ Använd web_search för att hämta aktuella belopp för 2026 direkt från Skatte
 Sök på: "skatteverket [ämne] 2026"
 Ange alltid vilket år beloppet gäller och länka till källan.` : ''
 
-  // ── STEG 4: LLM MED WEBB-SÖKNING ────────────────────────────────────────
+  // ── STEG 4: LLM ──────────────────────────────────────────────────────────
   const system = `Du är Normiq — ett söksystem för svenska skatte- och redovisningsregler.
 
 DIN UPPGIFT:
-Du har fått relevanta källtexter hämtade från svensk lagstiftning. Din uppgift är att förklara vad dessa källor säger om frågan — inte att ge råd eller skriva fritt.
+Du har fått relevanta källtexter hämtade från svensk lagstiftning och Skatteverkets vägledningar. Din uppgift är att ge ett fullständigt, praktiskt användbart svar baserat på dessa källor.
 
-Du hittar svaret i källorna. Om källorna inte räcker — och frågan gäller belopp som ändras varje år — använd web_search för att hämta aktuell information från Skatteverket.
+VIKTIGT: Källtexterna ger dig lagstiftningens ramverk. Du ska:
+1. Syntetisera informationen från ALLA relevanta källtexter — inte bara den första
+2. Ge ett komplett svar som täcker hela frågan, inte bara ett lagrum
+3. Prioritera Skatteverkets vägledningar och praxis framför ren lagtext när båda finns
+4. Fylla ut med välkänd, etablerad praxis på området om källorna är knapphändiga — men markera tydligt vad som är praxis vs lagtext
+5. Om en fråga har beloppsgränser eller procentsatser — ange dem alltid explicit
 
-TILLGÄNGLIGA KÄLLOR:
+TILLGÄNGLIGA KÄLLOR (prioritera SKV och BFN framför ren lagtext):
 ${källkontext}
 
 ${usedFallback ? 'OBS: Källorna kommer från det manuella regelindexet — ej vektorsökning.' : ''}${bokforingExtra}${webSearchInstruktion}
 
 SVARSFORMAT — använd exakt dessa separatorer:
 
-## [Rubrik]
+## [Rubrik som sammanfattar svaret]
 
-[Förklara vad källorna säger. Citera med exakt lagrum [IL 57 kap. 10 §]. Ange alltid vilket år ett belopp gäller.]
+[Ge ett fullständigt svar. Förklara regelns innebörd, tillämpningsområde, viktiga gränsvärden och vanliga undantag. Citera med exakt lagrum [IL 57 kap. 10 §]. Ange alltid vilket år ett belopp gäller. Använd gärna kortare stycken och dela upp svaret logiskt. Var inte rädd för att ge ett längre svar om frågan kräver det.]
 
 ---FÖRENKLAT---
-Enkelt uttryckt: [Skriv 4–7 meningar som förklarar reglerna i praktiken för någon utan juridisk bakgrund.
-Inkludera:
-- Vad regeln innebär konkret
+Enkelt uttryckt: [4–7 meningar för någon utan juridisk bakgrund. Inkludera:
+- Vad regeln innebär konkret i praktiken
 - Vanliga missförstånd eller fallgropar
 - Vad man behöver tänka på eller dokumentera
-- Om det finns viktiga undantag eller gränsdragningar
-Använd vardagligt språk men var precis — detta är den viktigaste delen av svaret.]
+- Viktiga undantag eller gränsdragningar]
 
 ---EXEMPEL---
-Exempel: [Konkret exempel med siffror${questionType === 'bokforing' ? '. Visa konteringsrader.' : '.'}]
+Exempel: [Konkret exempel med siffror${questionType === 'bokforing' ? '. Visa konteringsrader.' : '. Visa hur regeln tillämpas steg för steg.'}]
 
 Källor: [kommaseparerad lista med exakta ref]
 Risk: ${risk.level} — ${risk.reason}
 
 REGLER:
-1. Håll dig STRIKT till källtexterna — lägg inte till information som inte finns där
-2. Om källorna inte täcker frågan och webb-sökning inte ger svar: säg det explicit
-3. Risk-raden är ALLTID sista raden
-4. Citera alltid med exakt lagrum [IL 16 kap. 2 §]
-5. Ange alltid årstal på belopp (t.ex. "290 kr/dygn 2026")
-6. Svara på svenska`
+1. Ge alltid ett komplett svar — ett halvt svar är sämre än ett längre
+2. Prioritera praktisk nytta: vad behöver användaren faktiskt veta?
+3. Om källorna inte täcker frågan: säg det och hänvisa till Skatteverket
+4. Risk-raden är ALLTID sista raden
+5. Citera alltid med exakt lagrum [IL 16 kap. 2 §]
+6. Ange alltid årstal på belopp (t.ex. "290 kr/dygn 2026")
+7. Svara på svenska`
 
   // @ts-expect-error — web_search_20250305 är ett giltigt type-värde
-  const tools: Anthropic.Tool[] = useWebSearch ? [
-    {
-      name: 'web_search',
-      type: 'web_search_20250305',
-    },
-  ] : []
+  const tools: Anthropic.Tool[] = useWebSearch ? [{ name: 'web_search', type: 'web_search_20250305' }] : []
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-5',
-    max_tokens: 2000,
+    max_tokens: 2500, // Ökat från 2000 för mer fullständiga svar
     system,
     ...(tools.length > 0 && { tools }),
     messages: messages.map((m: { role: string; content: string }) => ({
@@ -281,7 +291,6 @@ REGLER:
     ? answer
     : answer + '\n\n_OBS: Svaret kunde inte verifieras fullt ut mot källtexterna. Kontrollera med originalkällan._'
 
-  // ── STEG 5b: CACHE SVAR ─────────────────────────────────────────────────
   if (!useWebSearch) {
     setCached(lastQuestion, finalAnswer, sourceRefs, risk.level)
   }
