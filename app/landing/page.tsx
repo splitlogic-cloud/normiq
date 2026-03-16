@@ -5,7 +5,6 @@ import { useState } from 'react'
 export default function Landing() {
   const [openFaq, setOpenFaq] = useState<number | null>(null)
   const [billingAnnual, setBillingAnnual] = useState(false)
-  const [mockStep, setMockStep] = useState(0)
 
   const faqs = [
     { q: 'Ersätter Normiq en skattejurist?', a: 'Nej. Normiq är ett beslutsstöd som hjälper dig att hitta relevanta källor snabbare. Slutlig bedömning görs alltid av användaren. Normiq är byggt för att underlätta research och dokumentation — inte för att ersätta professionellt omdöme.' },
@@ -13,11 +12,6 @@ export default function Landing() {
     { q: 'Hur skiljer sig Normiq från generell AI?', a: 'Generella AI-verktyg försöker formulera ett svar som låter rätt. Normiq hittar först relevanta källor, verifierar mot dem, och förklarar sedan vad de faktiskt säger. AI:n skriver inte svaren fritt — den förklarar källorna.' },
     { q: 'Kan jag använda Normiq i ett byråteam?', a: 'Ja. Pro-planen täcker upp till 10 användare och är designad för att team ska kunna arbeta konsekvent.' },
     { q: 'Vad händer med mina frågor och svar?', a: 'Frågor och svar loggas för spårbarhet i ditt arbetsflöde. Din data används inte för att träna externa AI-modeller.' },
-  ]
-
-  const mockChat = [
-    { role: 'user', text: 'Får jag dra av en dator i mitt AB?' },
-    { role: 'assistant', text: 'Ja, om datorn används i verksamheten är den avdragsgill som inventarie enligt [IL 16:1]. Hela kostnaden kan dras av direkt om den understiger 28 650 kr (2026), annars skrivs den av över 3–5 år.', sources: 'IL 16:1 · SKV A 2025:3', risk: 'LÅG' },
   ]
 
   return (
@@ -56,9 +50,6 @@ export default function Landing() {
         .faq-q { font-family: 'Cormorant Garamond', Georgia, serif; font-size: 21px; color: #0A0A0C; line-height: 1.2; padding-right: 24px; transition: color .2s; }
         .faq-btn:hover .faq-q { color: #C0321A; }
 
-        .audience-card { padding: 36px 32px; border-left: 2px solid #E0DDD6; transition: border-color .25s; }
-        .audience-card:hover { border-color: #C0321A; }
-
         .toggle-pill { display: inline-flex; background: #E8E5DF; border-radius: 30px; padding: 4px; gap: 2px; }
         .toggle-opt { padding: 7px 18px; border-radius: 24px; border: none; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; cursor: pointer; transition: all .2s; background: transparent; color: #888; }
         .toggle-opt.active { background: white; color: #0A0A0C; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
@@ -73,7 +64,6 @@ export default function Landing() {
         .flow-desc { font-family: Georgia, serif; font-size: 13px; color: #666; line-height: 1.75; }
         .flow-arrow { font-family: 'DM Mono', monospace; color: #C0321A; font-size: 18px; padding: 0 8px; margin-top: 28px; flex-shrink: 0; }
 
-        /* Mock chat */
         .mock-wrap { background: white; border: 1px solid #E0DDD6; border-radius: 14px; overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,.12); max-width: 480px; width: 100%; }
         .mock-topbar { background: #F9F8F5; border-bottom: 1px solid #E0DDD6; padding: 14px 20px; display: flex; align-items: center; gap: 10px; }
         .mock-dot { width: 10px; height: 10px; border-radius: 50%; }
@@ -88,23 +78,24 @@ export default function Landing() {
         .mock-risk { font-family: 'DM Mono', monospace; font-size: 10px; color: #2E6644; display: flex; align-items: center; gap: 5px; }
         .mock-risk::before { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #2E6644; opacity: .7; }
 
-        /* Source logos */
         .source-logo { font-family: 'DM Mono', monospace; font-size: 11px; color: #888; letter-spacing: .06em; padding: 8px 16px; border: 1px solid #E0DDD6; border-radius: 4px; background: white; white-space: nowrap; }
 
         @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
-        @keyframes slideIn { from { opacity:0; transform:translateX(12px); } to { opacity:1; transform:none; } }
         .a1 { animation: fadeUp .65s both; }
         .a2 { animation: fadeUp .65s .12s both; }
         .a3 { animation: fadeUp .65s .24s both; }
         .a4 { animation: fadeUp .65s .36s both; }
         .a5 { animation: fadeUp .65s .48s both; }
 
-        /* Grain overlay */
         .grain::after {
           content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 999;
           background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
           opacity: .4;
         }
+
+        /* Tax Brain mockup */
+        .tb-field { background: #0d0d0f; border: 1px solid #2a2a2c; border-radius: 6px; padding: 8px 10px; }
+        .tb-label { font-family: 'DM Mono', monospace; font-size: 8px; color: #444; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 3px; }
       `}</style>
 
       <div className="grain" />
@@ -176,7 +167,7 @@ export default function Landing() {
                   Ja, om datorn används i verksamheten är den avdragsgill som inventarie enligt <span className="mock-ref">IL 16:1</span>. Kostnaden kan dras av direkt om den understiger 28 650 kr (2026), annars skrivs den av över 3–5 år enligt <span className="mock-ref">IL 18:4</span>.
                   <div style={{ marginTop: 12, padding: '12px 0 0', borderTop: '1px solid #F0EDE6' }}>
                     <div className="mono" style={{ fontSize: 12, color: '#555', lineHeight: 1.8 }}>
-                      <strong style={{ color: '#0A0A0C' }}>Enkelt uttryckt:</strong> Köper du en dator för jobbet betalar bolaget — inte du privat. Spara kvittot och notera att den används i verksamheten. Om den även används privat kan förmånsvärde uppstå.
+                      <strong style={{ color: '#0A0A0C' }}>Enkelt uttryckt:</strong> Köper du en dator för jobbet betalar bolaget — inte du privat. Spara kvittot och notera att den används i verksamheten.
                     </div>
                   </div>
                 </div>
@@ -266,16 +257,14 @@ export default function Landing() {
                 a: 'Utdelning upp till gränsbeloppet beskattas med 20 % i kapital. Gränsbeloppet består av upp till fyra delar: (1) Grundbelopp: 4 IBB = 322 400 kr (2026). (2) Lönebaserat utrymme: 50 % av löner över 8 IBB (644 800 kr). (3) Sparat utdelningsutrymme från tidigare år. (4) Ränta på omkostnadsbelopp överstigande 100 000 kr (statslåneränta + 9 %). Utdelning över gränsbeloppet beskattas som tjänst.',
                 simplified: 'Du kan ta ut lågbeskattad utdelning (20 %) upp till ditt gränsbelopp. Grundbeloppet är 322 400 kr (2026) — det får alla kvalificerade ägare. Har bolaget höga löner kan du lägga till 50 % av löner som överstiger 644 800 kr. Har du inte tagit hela utrymmet tidigare år rullar det med. Du måste ha ägt aktierna vid årets ingång och utdelningen beslutas på stämman.',
                 sources: 'IL 57:11 · IL 57:19 · IL 57:20',
-                risk: 'HÖG',
-                riskColor: '#A02818',
+                risk: 'HÖG', riskColor: '#A02818',
               },
               {
                 q: 'Vad gäller för representation avseende moms?',
                 a: 'Momsavdrag för representation medges på underlag om högst 300 kr per person. Mat: avdrag med 12 % = max 36 kr/person. Alkohol: avdrag med 25 % = max 75 kr/person. Ingår både mat och alkohol kan du i stället använda schablonen: 46 kr per person och tillfälle, förutsatt att kostnaden överstiger 300 kr exkl. moms per person och att momsen uppgår till minst 46 kr per person.',
                 simplified: 'Du kan dra av momsen på representation upp till 300 kr per person i underlag — mat med 12 % (max 36 kr) och alkohol med 25 % (max 75 kr). Finns båda i måltiden är schablonen enklast: 46 kr per person, om kostnaden är över 300 kr och momsen minst 46 kr. Dokumentera alltid vilka som deltog och affärssyftet.',
                 sources: 'ML 8:9 · SKV A 2025:2',
-                risk: 'MEDEL',
-                riskColor: '#7A6010',
+                risk: 'MEDEL', riskColor: '#7A6010',
               },
             ].map((ex, i) => (
               <div key={i} style={{ background: 'white', borderRadius: 8, overflow: 'hidden', border: '1px solid #2a2a2c' }}>
@@ -352,6 +341,97 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── TAX BRAIN ── */}
+      <section id="tax-brain" style={{ background: '#0A0A0C', padding: '96px 48px', borderTop: '1px solid #111' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
+
+            {/* Text */}
+            <div>
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(192,50,26,.12)', border: '1px solid rgba(192,50,26,.25)', borderRadius: 20, padding: '5px 14px', marginBottom: 24 }}>
+                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#C0321A', display: 'inline-block' }} />
+                <span style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#C0321A', letterSpacing: '.04em' }}>Nytt i Normiq</span>
+              </div>
+              <h2 className="cg" style={{ fontSize: 'clamp(34px,4vw,56px)', color: 'white', marginBottom: 20, letterSpacing: '-.025em', lineHeight: 1.03 }}>
+                Klistra in ett kvitto.{' '}
+                <em style={{ color: '#C0321A', fontStyle: 'italic' }}>Få kontering direkt.</em>
+              </h2>
+              <p style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#666', lineHeight: 1.9, marginBottom: 36 }}>
+                Tax Brain tar en transaktion — fritext eller inklistrat kvitto — och returnerar rätt BAS-konto, momskonto, avdragsrätt och lagrum på sekunder.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginBottom: 44 }}>
+                {[
+                  ['Klistra in kvittotext', 'Beskrivning, belopp och momssats extraheras automatiskt.'],
+                  ['Beräkning utan AI', 'Netto och moms räknas deterministiskt av koden — aldrig av modellen.'],
+                  ['Konto, lagrum, risk', 'BAS-konto med motivering och klickbara lagrum direkt i svaret.'],
+                ].map(([title, desc]) => (
+                  <div key={title} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <span style={{ color: '#C0321A', flexShrink: 0, marginTop: 4, fontSize: 12 }}>→</span>
+                    <div>
+                      <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: 'white', marginBottom: 2 }}>{title}</div>
+                      <div style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#555', lineHeight: 1.7 }}>{desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <a href="/register" className="btn-primary">Prova Tax Brain gratis</a>
+            </div>
+
+            {/* Mockup — in → out */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+              {/* INPUT */}
+              <div style={{ background: '#111113', border: '1px solid #2a2a2c', borderRadius: 10, padding: '20px 22px' }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 11, color: '#444', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>Inklistrat kvitto</div>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#777', lineHeight: 1.8 }}>
+                  Restaurang Pelikan<br/>
+                  Klientlunch 2026-03-11<br/>
+                  <span style={{ color: '#AAA' }}>Totalt: 1 800 kr inkl. 12% moms</span>
+                </div>
+              </div>
+
+              {/* ARROW */}
+              <div style={{ textAlign: 'center', color: '#C0321A', fontSize: 22, lineHeight: 1 }}>↓</div>
+
+              {/* OUTPUT */}
+              <div style={{ background: 'white', borderRadius: 10, overflow: 'hidden', border: '1px solid #E0DDD6' }}>
+                <div style={{ padding: '20px 22px', borderBottom: '1px solid #F0EDE6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 11, color: '#BBB', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>Konto</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                      <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 28, color: '#0A0A0C', fontWeight: 500 }}>6072</span>
+                      <span style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#888' }}>Representation</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 11, color: '#BBB', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>Belopp</div>
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, color: '#0A0A0C' }}>1 607 kr</div>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#BBB' }}>193 kr moms · se motivering</div>
+                  </div>
+                </div>
+                <div style={{ padding: '14px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {['ML 8 kap. 9 §', 'IL 16 kap. 2 §'].map((l, i) => (
+                      <span key={i} style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0321A', border: '1px solid rgba(192,50,26,.2)', borderBottom: '2px solid rgba(192,50,26,.4)', padding: '2px 7px', borderRadius: 3 }}>§ {l}</span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#7A6010', display: 'inline-block' }} />
+                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#AAA' }}>MEDEL</span>
+                  </div>
+                </div>
+                <div style={{ padding: '12px 22px', borderTop: '1px solid #F0EDE6', background: '#FAFAF8' }}>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#888', lineHeight: 1.75 }}>
+                    Representation — avdragsrätt saknas för inkomstskatt (IL 16:2). Ingående moms 193 kr bokförs mot 2640, avdragsgill del beror på antal gäster.
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ── PRISER ── */}
       <section id="priser" style={{ background: 'white', borderTop: '1px solid #E0DDD6', borderBottom: '1px solid #E0DDD6', padding: '88px 48px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
@@ -368,31 +448,22 @@ export default function Landing() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
             {[
               {
-                name: 'Starter',
-                price: billingAnnual ? '392' : '490',
+                name: 'Starter', price: billingAnnual ? '392' : '490',
                 desc: 'För dig som vill testa Normiq i praktiken.',
-                features: ['1 användare', 'Källbaserade svar', 'Riskklassning', 'Auditlogg', 'Klickbara lagrum'],
-                cta: 'Kom igång gratis',
-                href: '/register?plan=starter',
-                featured: false,
+                features: ['1 användare', 'Advisor — källbaserade svar', 'Tax Brain — transaktionsanalys', 'Riskklassning', 'Auditlogg'],
+                cta: 'Kom igång gratis', href: '/register?plan=starter', featured: false,
               },
               {
-                name: 'Pro',
-                price: billingAnnual ? '1 592' : '1 990',
+                name: 'Pro', price: billingAnnual ? '1 592' : '1 990',
                 desc: 'För byråer och team som vill använda Normiq i vardagen.',
                 features: ['Upp till 10 användare', 'Allt i Starter', 'Teamhistorik', 'Prioriterad support', 'Exportera svar som PDF'],
-                cta: 'Starta Pro',
-                href: '/register?plan=pro',
-                featured: true,
+                cta: 'Starta Pro', href: '/register?plan=pro', featured: true,
               },
               {
-                name: 'Enterprise',
-                price: 'Offert',
+                name: 'Enterprise', price: 'Offert',
                 desc: 'För större organisationer med krav på integration och säkerhet.',
                 features: ['Obegränsade användare', 'Allt i Pro', 'SSO / SAML', 'Dataisolering', 'SLA och dedikerad support'],
-                cta: 'Kontakta oss',
-                href: 'mailto:hej@normiq.se',
-                featured: false,
+                cta: 'Kontakta oss', href: 'mailto:hej@normiq.se', featured: false,
               },
             ].map((plan, i) => (
               <div key={i} className={`price-card ${plan.featured ? 'featured' : ''}`}>
