@@ -6,8 +6,6 @@
  * Crawlar www4.skatteverket.se/rattsligvagledning,
  * filtrerar på relevanta ämnen och indexerar i Supabase.
  */
-process.on('uncaughtException', err => { console.error('FEL:', err.message, err.stack); process.exit(1) })
-process.on('unhandledRejection', err => { console.error('FEL:', err); process.exit(1) })
 
 import { createClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
@@ -21,8 +19,17 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 )
 
-const BASE_URL = 'https://www4.skatteverket.se/rattsligvagledning/edition/2026'
+const BASE_URL = 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.4'
+const BASE_HOST = 'https://www4.skatteverket.se'
 const DELAY_MS = 400
+
+// Kategorisidor att crawla — hämtar alla undersidelänkar automatiskt
+const KATEGORI_URLS = [
+  'https://www4.skatteverket.se/rattsligvagledning/edition/2026.4/1225.html',   // Inkomstskatt
+  'https://www4.skatteverket.se/rattsligvagledning/edition/2026.4/321516.html', // Mervärdesskatt
+  'https://www4.skatteverket.se/rattsligvagledning/edition/2026.4/1221.html',   // Bokföring & redovisning
+  'https://www4.skatteverket.se/rattsligvagledning/edition/2026.4/1232.html',   // Socialavgifter
+]
 
 // ── Nyckelord som avgör om en sida är relevant ────────────────────────────
 const RELEVANTA_NYCKELORD = [
@@ -223,108 +230,105 @@ async function indexPage(url, title, text) {
   return saved
 }
 
+// ── Extrahera alla avsnittslänkar från en kategorisida ────────────────────
+
+async function getLinksFromPage(url) {
+  const html = await fetchPage(url)
+  if (!html) return []
+
+  const seen = new Set()
+  const links = []
+
+  // Matcha alla interna avsnittslänkar
+  const pattern = /href="([^"]*\/edition\/2026\.4\/\d+\.html[^"]*)"/g
+  let m
+  while ((m = pattern.exec(html)) !== null) {
+    let href = m[1]
+    if (!href.startsWith('http')) href = BASE_HOST + href
+    // Ta bort query-parametrar
+    href = href.split('?')[0]
+    if (!seen.has(href)) {
+      seen.add(href)
+      links.push(href)
+    }
+  }
+
+  // Matcha även relativa länkar med bara nummer
+  const relPattern = /href="([^"]*\/\d+\.html)"/g
+  while ((m = relPattern.exec(html)) !== null) {
+    let href = m[1]
+    if (!href.startsWith('http')) {
+      if (href.startsWith('/')) href = BASE_HOST + href
+      else href = BASE_URL + '/' + href.split('/').pop()
+    }
+    href = href.split('?')[0]
+    if (href.includes('2026.4') && !seen.has(href)) {
+      seen.add(href)
+      links.push(href)
+    }
+  }
+
+  return links
+}
+
 // ── Huvudloop ─────────────────────────────────────────────────────────────
 
 async function crawlAndIndex() {
-  // Kända relevanta avsnittsnummer från SKV RV 2026
-  // (hämtade manuellt — täcker de viktigaste ämnena)
-  const KANDA_AVSNITT = [
-    // Representation
-    '2803', '2804', '2805', '2806', '2807', '2808',
-    // Traktamente & resor
-    '2820', '2821', '2822', '2823', '2824', '2825', '2826', '2827', '2828',
-    // Förmåner
-    '2840', '2841', '2842', '2843', '2844', '2845', '2846', '2847', '2848',
-    // Bilförmån
-    '2850', '2851', '2852', '2853', '2854',
-    // Friskvård
-    '2860', '2861',
-    // Moms — avdragsrätt
-    '3050', '3051', '3052', '3053', '3054', '3055', '3056', '3057', '3058', '3059',
-    '3060', '3061', '3062', '3063', '3064', '3065',
-    // Moms — faktura
-    '3100', '3101', '3102', '3103', '3104', '3105',
-    // Fåmansföretag / 3:12
-    '4200', '4201', '4202', '4203', '4204', '4205', '4206', '4207', '4208', '4209',
-    '4210', '4211', '4212', '4213', '4214', '4215',
-    // Avskrivningar / inventarier
-    '3500', '3501', '3502', '3503', '3504', '3505',
-    // Periodiseringsfond / expansionsfond
-    '3600', '3601', '3602', '3603', '3604',
-    // Lön / arbetsgivaravgifter
-    '2900', '2901', '2902', '2903', '2904',
-    // Kapitalvinst
-    '4000', '4001', '4002', '4003', '4004',
-    // ROT/RUT
-    '2700', '2701', '2702', '2703',
-    // Bokföring / redovisning
-    '1700', '1701', '1702', '1703', '1704',
-  ]
+  // Steg 1: Samla alla avsnittslänkar från kategorisidorna
+  log('Steg 1: Samlar avsnittslänkar från kategorisidor...')
+  const allLinks = new Set()
 
-  log(`\nFörförsök: ${KANDA_AVSNITT.length} kända avsnitt...`)
+  for (const katUrl of KATEGORI_URLS) {
+    log(`  Crawlar: ${katUrl}`)
+    const links = await getLinksFromPage(katUrl)
+    log(`  → ${links.length} länkar hittade`)
 
-  let totalIndexed = 0
-  let totalRelevant = 0
+    // För varje länk — crawla även den sidan för djupare länkar
+    for (const link of links) {
+      allLinks.add(link)
+    }
+
+    // Crawla en nivå djupare för varje kategorisida
+    for (const link of links.slice(0, 50)) {
+      const subLinks = await getLinksFromPage(link)
+      for (const sl of subLinks) allLinks.add(sl)
+      await sleep(150)
+    }
+
+    await sleep(500)
+  }
+
+  // Lägg alltid till kategorisidorna själva
+  for (const url of KATEGORI_URLS) allLinks.add(url)
+
+  log(`\nTotalt ${allLinks.size} unika avsnittssidor att analysera`)
+
+  // Steg 2: Hämta, filtrera och indexera
+  log('Steg 2: Hämtar och indexerar relevanta sidor...\n')
+
   let totalFetched = 0
-  const failedIds = []
+  let totalRelevant = 0
+  let totalIndexed = 0
 
-  // Fas 1: Prova kända avsnitt
-  for (const id of KANDA_AVSNITT) {
-    const url = `${BASE_URL}/${id}.html`
+  for (const url of allLinks) {
     const html = await fetchPage(url)
     await sleep(DELAY_MS)
 
-    if (!html) { failedIds.push(id); continue }
-
-    const title = extractTitle(html) || `SKV avsnitt ${id}`
-    const text = stripHtml(html)
+    if (!html) continue
     totalFetched++
 
-    if (!isRelevant(text, title)) continue
-    totalRelevant++
+    const title = extractTitle(html) || url.split('/').pop()
+    const text = stripHtml(html)
 
-    process.stdout.write(`  ✓ ${id} — ${title.slice(0, 50)}\n`)
+    if (text.length < 200) continue
+    if (!isRelevant(text, title)) continue
+
+    totalRelevant++
+    process.stdout.write(`  ✓ ${title.slice(0, 60)}\n`)
+
     const n = await indexPage(url, title, text)
     totalIndexed += n
-  }
-
-  // Fas 2: Crawla startsidan för ytterligare länkar
-  log('\nFas 2: Crawlar navigationsstruktur...')
-  const html = await fetchPage(BASE_URL)
-  if (html) {
-    const seen = new Set(KANDA_AVSNITT)
-    const pattern = /href="[^"]*\/(\d+)\.html"/g
-    let m
-    const extraIds = []
-
-    while ((m = pattern.exec(html)) !== null) {
-      if (!seen.has(m[1])) {
-        seen.add(m[1])
-        extraIds.push(m[1])
-      }
-    }
-
-    log(`  → ${extraIds.length} ytterligare avsnitt att prova`)
-
-    for (const id of extraIds) {
-      const url = `${BASE_URL}/${id}.html`
-      const pageHtml = await fetchPage(url)
-      await sleep(DELAY_MS)
-
-      if (!pageHtml) continue
-
-      const title = extractTitle(pageHtml) || `SKV avsnitt ${id}`
-      const text = stripHtml(pageHtml)
-      totalFetched++
-
-      if (!isRelevant(text, title)) continue
-      totalRelevant++
-
-      process.stdout.write(`  ✓ ${id} — ${title.slice(0, 50)}\n`)
-      const n = await indexPage(url, title, text)
-      totalIndexed += n
-      await sleep(200)
-    }
+    await sleep(200)
   }
 
   return { totalFetched, totalRelevant, totalIndexed }
