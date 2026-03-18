@@ -164,7 +164,7 @@ export default function Landing() {
               </div>
               <div className="mock-assistant">
                 <div className="mock-body">
-                  Ja, om datorn används i verksamheten är den avdragsgill som inventarie enligt <span className="mock-ref">IL 16:1</span>. Kostnaden kan dras av direkt om den understiger 28 650 kr (2026), annars skrivs den av över 3–5 år enligt <span className="mock-ref">IL 18:4</span>.
+                  Ja, om datorn används i verksamheten är den avdragsgill som inventarie enligt <span className="mock-ref">IL 16:1</span>. Kostnaden kan dras av direkt om den understiger 29 600 kr (0,5 × prisbasbeloppet 2026), annars skrivs den av över 3–5 år enligt <span className="mock-ref">IL 18:4</span>.
                   <div style={{ marginTop: 12, padding: '12px 0 0', borderTop: '1px solid #F0EDE6' }}>
                     <div className="mono" style={{ fontSize: 12, color: '#555', lineHeight: 1.8 }}>
                       <strong style={{ color: '#0A0A0C' }}>Enkelt uttryckt:</strong> Köper du en dator för jobbet betalar bolaget — inte du privat. Spara kvittot och notera att den används i verksamheten.
