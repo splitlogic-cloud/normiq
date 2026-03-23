@@ -1,0 +1,10 @@
+﻿import { chromium } from 'playwright'
+const browser = await chromium.launch({ headless: true })
+const page = await browser.newPage()
+await page.goto('https://www4.skatteverket.se/rattsligvagledning/edition/2026.4/331518.html')
+await page.waitForLoadState('networkidle')
+const title = await page.title()
+const text = await page.innerText('body')
+console.log('Titel:', title)
+console.log('Text (500 tecken):', text.slice(0, 500))
+await browser.close()
