@@ -437,33 +437,45 @@ export default function Landing() {
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div className="label">Priser</div>
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 52, flexWrap: 'wrap', gap: 20 }}>
-            <h2 className="cg" style={{ fontSize: 'clamp(30px, 3.5vw, 48px)', color: '#0A0A0C', letterSpacing: '-.02em' }}>Enkel prissättning för byråer och ekonomiteam</h2>
+            <h2 className="cg" style={{ fontSize: 'clamp(30px, 3.5vw, 48px)', color: '#0A0A0C', letterSpacing: '-.02em' }}>Enkel prissättning — betala per användare</h2>
             <div className="toggle-pill">
               <button className={`toggle-opt ${!billingAnnual ? 'active' : ''}`} onClick={() => setBillingAnnual(false)}>Månadsvis</button>
               <button className={`toggle-opt ${billingAnnual ? 'active' : ''}`} onClick={() => setBillingAnnual(true)}>
-                Årsvis <span style={{ color: '#3A7A52', marginLeft: 4 }}>−20%</span>
+                Årsvis <span style={{ color: '#3A7A52', marginLeft: 4 }}>−17%</span>
               </button>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
             {[
               {
-                name: 'Starter', price: billingAnnual ? '392' : '490',
-                desc: 'För dig som vill testa Normiq i praktiken.',
-                features: ['1 användare', 'Advisor — källbaserade svar', 'Tax Brain — transaktionsanalys', 'Riskklassning', 'Auditlogg'],
-                cta: 'Kom igång gratis', href: '/register?plan=starter', featured: false,
+                name: 'Solo',
+                price: billingAnnual ? '124' : '149',
+                period: billingAnnual ? 'kr/mån, faktureras årsvis' : 'kr/mån',
+                desc: 'För dig som driver eget bolag eller jobbar självständigt med skatt och redovisning.',
+                features: ['1 användare', 'Advisor — källbaserade svar', 'Tax Brain — transaktionsanalys', 'Riskklassning per fråga', 'Klickbara lagrum'],
+                cta: 'Kom igång gratis',
+                href: '/register?plan=solo',
+                featured: false,
               },
               {
-                name: 'Pro', price: billingAnnual ? '1 592' : '1 990',
-                desc: 'För byråer och team som vill använda Normiq i vardagen.',
-                features: ['Upp till 10 användare', 'Allt i Starter', 'Teamhistorik', 'Prioriterad support', 'Exportera svar som PDF'],
-                cta: 'Starta Pro', href: '/register?plan=pro', featured: true,
+                name: 'Team',
+                price: billingAnnual ? '666' : '799',
+                period: billingAnnual ? 'kr/mån, faktureras årsvis' : 'kr/mån',
+                desc: 'För byråer och ekonomiteam som vill arbeta konsekvent med källbaserade svar.',
+                features: ['Upp till 10 användare', 'Allt i Solo', 'Delad frågehistorik', 'Prioriterad support'],
+                cta: 'Starta Team',
+                href: '/register?plan=team',
+                featured: true,
               },
               {
-                name: 'Enterprise', price: 'Offert',
-                desc: 'För större organisationer med krav på integration och säkerhet.',
-                features: ['Obegränsade användare', 'Allt i Pro', 'SSO / SAML', 'Dataisolering', 'SLA och dedikerad support'],
-                cta: 'Kontakta oss', href: 'mailto:hej@normiq.se', featured: false,
+                name: 'Enterprise',
+                price: 'Offert',
+                period: '',
+                desc: 'För större organisationer med krav på integration, dataisolering och SLA.',
+                features: ['Obegränsade användare', 'Allt i Team', 'SSO / SAML', 'Dataisolering', 'SLA och dedikerad support'],
+                cta: 'Kontakta oss',
+                href: 'mailto:hej@normiq.se',
+                featured: false,
               },
             ].map((plan, i) => (
               <div key={i} className={`price-card ${plan.featured ? 'featured' : ''}`}>
@@ -473,10 +485,10 @@ export default function Landing() {
                   </div>
                 )}
                 <div className="mono" style={{ fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#999', marginBottom: 8 }}>{plan.name}</div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 5, marginBottom: 4 }}>
                   <span className="cg" style={{ fontSize: 46, fontWeight: 300, color: '#0A0A0C', letterSpacing: '-.02em', lineHeight: 1 }}>{plan.price}</span>
-                  {plan.price !== 'Offert' && <span style={{ fontSize: 14, color: '#AAA' }}>kr/mån</span>}
                 </div>
+                {plan.period && <div style={{ fontSize: 12, color: '#AAA', marginBottom: 14 }}>{plan.period}</div>}
                 <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7, marginBottom: 28, minHeight: 44 }}>{plan.desc}</div>
                 <div style={{ borderTop: '1px solid #F0EDE6', paddingTop: 24, marginBottom: 28, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {plan.features.map((f, fi) => (
