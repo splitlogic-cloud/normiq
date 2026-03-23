@@ -53,7 +53,6 @@ function classifyRisk(question: string, sources: { ref: string; text: string }[]
   reason: string
 } {
   const q = question.toLowerCase()
-
   const hogSignals = [
     'fåmansbolag', '3:12', 'kvalificerad andel', 'verksamhet i betydande',
     'underprisöverlåtelse', 'förtäckt utdelning', 'skatteflykt', 'genomsyn',
@@ -66,7 +65,6 @@ function classifyRisk(question: string, sources: { ref: string; text: string }[]
     'ränteavdrag', 'kapitalvinst', 'uppskov', 'rot', 'rut', 'traktamente',
     'milersättning', 'uthyrning', 'dubbel bosättning'
   ]
-
   if (hogSignals.some(s => q.includes(s))) {
     return { level: 'HÖG', reason: 'Frågan berör ett område med hög komplexitet och individuella bedömningar. Konsultera en skatteexpert.' }
   }
@@ -97,18 +95,24 @@ function detectQuestionType(q: string): 'bokforing' | 'skatt' | 'generell' {
 function needsWebSearch(question: string): boolean {
   const q = question.toLowerCase()
   const årsbelopp = [
-    'traktamente', 'milersättning', 'prisbasbelopp', 'ibb', 'inkomstbasbelopp',
-    'gränsbelopp', 'schablonbelopp', 'friskvård', 'förmånsvärde', 'bilförmån',
-    'arbetsgivaravgift', 'egenavgift', 'grundavdrag', 'jobbskatteavdrag',
-    'rot', 'rut', 'uthyrning', 'schablon', 'basbelopp', 'förenklingsregeln',
-    '2026', 'i år', 'aktuell', 'nuvarande', 'gäller nu'
+    'traktamente', 'milersättning', 'resetraktamente', 'nattraktamente',
+    'prisbasbelopp', 'ibb', 'inkomstbasbelopp', 'basbelopp',
+    'gränsbelopp', 'schablonbelopp', 'förenklingsregeln', 'grundbelopp',
+    'friskvård', 'friskvårdsbidrag',
+    'förmånsvärde', 'bilförmån', 'förmånsbil',
+    'arbetsgivaravgift', 'egenavgift',
+    'grundavdrag', 'jobbskatteavdrag',
+    'rot', 'rut', 'schablon',
+    '3:12', 'fåmansbolag', 'fåmansföretag', 'utdelning', 'lönebaserat',
+    'kostförmån', 'julklapp', 'jubileumsgåva', 'minnesgåva',
+    'direktavdrag', 'kompletteringsregeln',
+    'uppskov', 'uthyrning',
+    '2026', 'i år', 'aktuell', 'nuvarande', 'gäller nu', 'aktuellt belopp',
   ]
   return årsbelopp.some(s => q.includes(s))
 }
 
 // ── KÄLLVIKTNING ─────────────────────────────────────────────────────────
-// SKV-vägledningar och praxis är mer praktiskt användbara än ren lagtext.
-// Vi boostar deras relevans så de inte drunknar i IL-massan.
 function boostScore(r: { metadata: { lag?: string }; similarity: number }): number {
   const lag = r.metadata?.lag?.toLowerCase() || ''
   if (lag.includes('skatteverket') || lag.includes('skv')) return r.similarity * 1.4
@@ -117,13 +121,31 @@ function boostScore(r: { metadata: { lag?: string }; similarity: number }): numb
   return r.similarity
 }
 
+// ── RETRY-LOGIK FÖR 529 OVERLOADED ───────────────────────────────────────
+async function createMessageWithRetry(params: Parameters<typeof client.messages.create>[0], maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await client.messages.create(params)
+    } catch (err: unknown) {
+      const isOverloaded = (err as { status?: number })?.status === 529
+      if (isOverloaded && attempt < maxRetries) {
+        const delay = attempt * 2000
+        console.log(`Anthropic overloaded, retry ${attempt}/${maxRetries} efter ${delay}ms`)
+        await new Promise(r => setTimeout(r, delay))
+        continue
+      }
+      throw err
+    }
+  }
+  throw new Error('Max retries exceeded')
+}
+
 export async function POST(req: Request) {
   const { messages, sessionId } = await req.json()
   const lastQuestion = messages[messages.length - 1].content
   const questionType = detectQuestionType(lastQuestion)
   const useWebSearch = needsWebSearch(lastQuestion)
 
-  // ── RATE LIMIT ───────────────────────────────────────────────────────────
   const id = sessionId || req.headers.get('x-forwarded-for') || 'anonymous'
   const { allowed, remaining } = checkRateLimit(id)
   if (!allowed) {
@@ -133,7 +155,6 @@ export async function POST(req: Request) {
     )
   }
 
-  // ── CACHE ────────────────────────────────────────────────────────────────
   if (!useWebSearch) {
     const cached = getCached(lastQuestion)
     if (cached) {
@@ -148,24 +169,19 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── STEG 1: RETRIEVAL ────────────────────────────────────────────────────
-  // Hämtar fler chunks (20) och boostar SKV/BFN/ML så de inte drunknar i IL
   let retrievedSources: { ref: string; rubrik: string; text: string; similarity?: number }[] = []
   let usedFallback = false
 
   try {
     const vectorResults = await searchDocuments(lastQuestion, 20)
-
     if (vectorResults && vectorResults.length > 0 && vectorResults[0].similarity > 0.2) {
-      // Sortera om med viktning
       const boosted = vectorResults
         .map((r: { content: string; metadata: { ref: string; rubrik: string; lag?: string }; similarity: number }) => ({
           ...r,
           boostedScore: boostScore(r),
         }))
         .sort((a: { boostedScore: number }, b: { boostedScore: number }) => b.boostedScore - a.boostedScore)
-        .slice(0, 14) // Ta de 14 bästa efter viktning
-
+        .slice(0, 14)
       retrievedSources = boosted.map((r: {
         content: string
         metadata: { ref: string; rubrik: string }
@@ -195,11 +211,8 @@ export async function POST(req: Request) {
   }
 
   const sourceRefs = retrievedSources.map(s => s.ref)
-
-  // ── STEG 2: RISKKLASSNING ────────────────────────────────────────────────
   const risk = classifyRisk(lastQuestion, retrievedSources)
 
-  // ── STEG 3: KÄLLKONTEXT ──────────────────────────────────────────────────
   const källkontext = retrievedSources
     .map(s => `[${s.ref}] — ${s.rubrik}\n${s.text}`)
     .join('\n\n---\n\n')
@@ -218,74 +231,71 @@ VIKTIGT — WEBB-SÖKNING:
 Frågan gäller belopp eller regler som uppdateras varje år.
 Använd web_search för att hämta aktuella belopp för 2026 direkt från Skatteverket INNAN du svarar.
 Sök på: "skatteverket [ämne] 2026"
-Ange alltid vilket år beloppet gäller och länka till källan.` : ''
+Ange alltid vilket år beloppet gäller.` : ''
 
-  // ── STEG 4: LLM ──────────────────────────────────────────────────────────
   const system = `Du är Normiq — ett söksystem för svenska skatte- och redovisningsregler.
 
 DIN UPPGIFT:
 Du har fått relevanta källtexter hämtade från svensk lagstiftning och Skatteverkets vägledningar. Din uppgift är att ge ett fullständigt, praktiskt användbart svar baserat på dessa källor.
 
-VIKTIGT: Källtexterna ger dig lagstiftningens ramverk. Du ska:
-1. Syntetisera informationen från ALLA relevanta källtexter — inte bara den första
-2. Ge ett komplett svar som täcker hela frågan, inte bara ett lagrum
-3. Prioritera Skatteverkets vägledningar och praxis framför ren lagtext när båda finns
-4. Fylla ut med välkänd, etablerad praxis på området om källorna är knapphändiga — men markera tydligt vad som är praxis vs lagtext
-5. Om en fråga har beloppsgränser eller procentsatser — ange dem alltid explicit
+VIKTIGT:
+1. Syntetisera informationen från ALLA relevanta källtexter
+2. Ge ett komplett svar som täcker hela frågan
+3. Prioritera Skatteverkets vägledningar och praxis framför ren lagtext
+4. Ange alltid beloppsgränser och procentsatser explicit
 
-TILLGÄNGLIGA KÄLLOR (prioritera SKV och BFN framför ren lagtext):
+TILLGÄNGLIGA KÄLLOR:
 ${källkontext}
 
 ${usedFallback ? 'OBS: Källorna kommer från det manuella regelindexet — ej vektorsökning.' : ''}${bokforingExtra}${webSearchInstruktion}
 
-SVARSFORMAT — använd exakt dessa separatorer:
+SVARSFORMAT:
 
-## [Rubrik som sammanfattar svaret]
+## [Rubrik]
 
-[Ge ett fullständigt svar. Förklara regelns innebörd, tillämpningsområde, viktiga gränsvärden och vanliga undantag. Citera med exakt lagrum [IL 57 kap. 10 §]. Ange alltid vilket år ett belopp gäller. Använd gärna kortare stycken och dela upp svaret logiskt. Var inte rädd för att ge ett längre svar om frågan kräver det.]
+[Fullständigt svar med exakta lagrum [IL 57 kap. 10 §] och årstal på belopp.]
 
 ---FÖRENKLAT---
-Enkelt uttryckt: [4–7 meningar för någon utan juridisk bakgrund. Inkludera:
-- Vad regeln innebär konkret i praktiken
-- Vanliga missförstånd eller fallgropar
-- Vad man behöver tänka på eller dokumentera
-- Viktiga undantag eller gränsdragningar]
+Enkelt uttryckt: [4–7 meningar för någon utan juridisk bakgrund.]
 
 ---EXEMPEL---
-Exempel: [Konkret exempel med siffror${questionType === 'bokforing' ? '. Visa konteringsrader.' : '. Visa hur regeln tillämpas steg för steg.'}]
+Exempel: [Konkret exempel med siffror${questionType === 'bokforing' ? '. Visa konteringsrader.' : '.'}]
 
-Källor: [kommaseparerad lista med exakta ref]
-Risk: ${risk.level} — ${risk.reason}
-
-REGLER:
-1. Ge alltid ett komplett svar — ett halvt svar är sämre än ett längre
-2. Prioritera praktisk nytta: vad behöver användaren faktiskt veta?
-3. Om källorna inte täcker frågan: säg det och hänvisa till Skatteverket
-4. Risk-raden är ALLTID sista raden
-5. Citera alltid med exakt lagrum [IL 16 kap. 2 §]
-6. Ange alltid årstal på belopp (t.ex. "290 kr/dygn 2026")
-7. Svara på svenska`
+Källor: [kommaseparerad lista]
+Risk: ${risk.level} — ${risk.reason}`
 
   // @ts-expect-error — web_search_20250305 är ett giltigt type-värde
   const tools: Anthropic.Tool[] = useWebSearch ? [{ name: 'web_search', type: 'web_search_20250305' }] : []
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-5',
-    max_tokens: 2500, // Ökat från 2000 för mer fullständiga svar
-    system,
-    ...(tools.length > 0 && { tools }),
-    messages: messages.map((m: { role: string; content: string }) => ({
-      role: m.role,
-      content: m.content,
-    })),
-  })
+  let response
+  try {
+    response = await createMessageWithRetry({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 2500,
+      system,
+      ...(tools.length > 0 && { tools }),
+      messages: messages.map((m: { role: string; content: string }) => ({
+        role: m.role,
+        content: m.content,
+      })),
+    })
+  } catch (err: unknown) {
+    const isOverloaded = (err as { status?: number })?.status === 529
+    return Response.json(
+      {
+        content: isOverloaded
+          ? 'Normiq är just nu under hög belastning. Vänta några sekunder och försök igen.'
+          : 'Ett oväntat fel uppstod. Försök igen om en stund.',
+      },
+      { status: 503 }
+    )
+  }
 
   const answer = response.content
     .filter(block => block.type === 'text')
     .map(block => block.type === 'text' ? block.text : '')
     .join('')
 
-  // ── STEG 5: VERIFIERING ──────────────────────────────────────────────────
   const verified = verifyAgainstSources(answer, retrievedSources)
   const finalAnswer = verified
     ? answer
@@ -295,7 +305,6 @@ REGLER:
     setCached(lastQuestion, finalAnswer, sourceRefs, risk.level)
   }
 
-  // ── STEG 6: SPARA ────────────────────────────────────────────────────────
   try {
     const { data: inserted } = await supabase
       .from('queries')
