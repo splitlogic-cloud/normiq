@@ -89,15 +89,17 @@ Jubileumsfester för anställda: avdrag för skäliga kostnader om företaget fi
   {
     ref: 'SKV Representation moms',
     rubrik: 'Representation — momsavdrag och beräkning',
-    text: `Ingående moms på representationskostnader är avdragsgill med begränsat belopp (ML 8 kap. 9 §).
+    text: `Ingående moms på representationskostnader är avdragsgill med begränsat belopp (ML 8 kap. 9 §). Underlaget är högst 300 kr exkl. moms per person och tillfälle.
 
-Måltidsrepresentation med enbart mat (12% moms): avdragsgill ingående moms beräknas på underlag om högst 90 kronor per person exklusive moms. Avdragsgill moms = 90 × 12% = 10,80 kronor per person.
+Enbart mat (12% moms): avdragsgill moms = max 36 kr/person (12% × 300 kr).
 
-Måltidsrepresentation med enbart alkohol (25% moms): avdragsgill ingående moms = 0 kronor. Alkohol ger aldrig momsavdrag oavsett belopp.
+Mat + alkohol — två alternativ:
+1. Proportionering: beräkna mat och alkohol separat utifrån faktiska kostnader. Mat (12%): max 12% på matdelen av 300 kr. Alkohol (25%): max 25% på alkoholdelen av 300 kr.
+2. Schablon: avdrag med 46 kr per person och tillfälle. Kräver att kostnad överstiger 300 kr exkl. moms OCH att debiterad moms är minst 46 kr per person.
 
-Måltidsrepresentation med både mat och alkohol: beräkna mat och alkohol separat. Mat (12%): 90 × 12% = 10,80 kr avdragsgill moms per person. Alkohol: 0 kr. OBS: Den gamla 46 kr-schablonen gällde vid 25% moms på hela måltiden och är inte tillämplig när mat och alkohol har olika momssatser.
+Enbart alkohol (25% moms): avdragsgill moms = 0 kr. Alkohol ger aldrig momsavdrag utan mat.
 
-Intern representation: samma regler som extern. Avdragsgill moms på mat: 10,80 kr/person (12%).
+OBS — fr.o.m. 1 april 2026: livsmedelsmoms sänks från 12% till 6% för livsmedel utan servering (t.ex. catering utan dukning). Restauranger med servering: fortfarande 12%. Om 6% moms gäller på maten: ny schablon 33 kr/person (om kostnad >300 kr exkl. moms och debiterad moms ≥33 kr). 46 kr-schablonen gäller fortfarande för restauranger med servering (12% moms på mat).
 
 Kulturarrangemang: ingen avdragsrätt för ingående moms oavsett belopp.
 

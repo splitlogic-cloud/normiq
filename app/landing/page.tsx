@@ -260,8 +260,8 @@ export default function Landing() {
               },
               {
                 q: 'Vad gäller för representation avseende moms?',
-                a: 'Momsavdrag för representation beräknas separat per momssats. Mat (12% moms): avdragsgill ingående moms = underlag × 12%, max underlag 90 kr/person exkl. moms = max 10,80 kr/person. Alkohol (25% moms): ingen avdragsrätt alls. OBS: Den gamla 46 kr-schablonen gällde vid 25% moms på hela måltiden och är inte längre tillämplig när mat och alkohol har olika momssatser.',
-                simplified: 'Du beräknar momsavdraget separat för mat och alkohol. Mat med 12% moms: avdrag på underlag upp till 90 kr per person exkl. moms, vilket ger max 10,80 kr i avdragsgill moms per person. Alkohol: noll i momsavdrag. Dokumentera alltid deltagarnas namn, antal och affärssyfte.',
+                a: 'Momsavdrag för representation medges på underlag om högst 300 kr exkl. moms per person. Enbart mat (12% moms): max 36 kr/person. Mat + alkohol — schablon: 46 kr/person om kostnad >300 kr exkl. moms och debiterad moms ≥46 kr. Mat + alkohol — proportionering: beräkna mat och alkohol separat utifrån faktiska kostnader. OBS fr.o.m. 1 april 2026: om restaurangen tillämpar 6% livsmedelsmoms gäller ny schablon om 33 kr/person.',
+                simplified: 'Du kan välja mellan två metoder när måltiden innehåller både mat och alkohol. Antingen schablonen (46 kr/person) om notan överstiger 300 kr exkl. moms — eller proportionering utifrån faktiska kostnader. Enbart mat utan alkohol: max 36 kr/person. Dokumentera alltid vilka som deltog och affärssyftet.',
                 sources: 'ML 8:9 · SKV A 2025:2',
                 risk: 'MEDEL', riskColor: '#7A6010',
               },
