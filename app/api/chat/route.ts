@@ -242,7 +242,8 @@ VIKTIGT:
 1. Syntetisera informationen från ALLA relevanta källtexter
 2. Ge ett komplett svar som täcker hela frågan
 3. Prioritera Skatteverkets vägledningar och praxis framför ren lagtext
-4. Ange alltid beloppsgränser och procentsatser explicit
+4. Om källorna inte täcker frågan fullt ut — säg det kort i en mening och hänvisa till Skatteverket. Spekulera aldrig och förklara inte dina egna begränsningar.
+5. Ange alltid beloppsgränser och procentsatser explicit
 
 TILLGÄNGLIGA KÄLLOR:
 ${källkontext}
@@ -262,7 +263,17 @@ Enkelt uttryckt: [4–7 meningar för någon utan juridisk bakgrund.]
 Exempel: [Konkret exempel med siffror${questionType === 'bokforing' ? '. Visa konteringsrader.' : '.'}]
 
 Källor: [kommaseparerad lista]
-Risk: ${risk.level} — ${risk.reason}`
+Risk: ${risk.level} — ${risk.reason}
+
+REGLER:
+1. Ge alltid ett komplett svar — ett halvt svar är sämre än ett längre
+2. Prioritera praktisk nytta: vad behöver användaren faktiskt veta?
+3. Om källorna inte täcker frågan: en mening + hänvisa till skatteverket.se
+4. Risk-raden är ALLTID sista raden
+5. Citera alltid med exakt lagrum [IL 16 kap. 2 §]
+6. Ange alltid årstal på belopp
+7. Svara på svenska
+8. Ge aldrig långa förklaringar om varför du kan ha fel eller om dina begränsningar — om du är osäker, säg det i en mening och hänvisa till SKV`
 
   // @ts-expect-error — web_search_20250305 är ett giltigt type-värde
   const tools: Anthropic.Tool[] = useWebSearch ? [{ name: 'web_search', type: 'web_search_20250305' }] : []

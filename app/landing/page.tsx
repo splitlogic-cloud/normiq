@@ -138,7 +138,6 @@ export default function Landing() {
               Testa gratis
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </a>
-            <a href="mailto:hej@normiq.se" className="btn-ghost">Boka demo</a>
           </div>
           <div className="a4 mono" style={{ fontSize: 11, color: '#AAA', letterSpacing: '.05em', display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             <span>✓ Källbaserade svar</span>
@@ -261,8 +260,8 @@ export default function Landing() {
               },
               {
                 q: 'Vad gäller för representation avseende moms?',
-                a: 'Momsavdrag för representation medges på underlag om högst 300 kr per person. Mat: avdrag med 12 % = max 36 kr/person. Alkohol: avdrag med 25 % = max 75 kr/person. Ingår både mat och alkohol kan du i stället använda schablonen: 46 kr per person och tillfälle, förutsatt att kostnaden överstiger 300 kr exkl. moms per person och att momsen uppgår till minst 46 kr per person.',
-                simplified: 'Du kan dra av momsen på representation upp till 300 kr per person i underlag — mat med 12 % (max 36 kr) och alkohol med 25 % (max 75 kr). Finns båda i måltiden är schablonen enklast: 46 kr per person, om kostnaden är över 300 kr och momsen minst 46 kr. Dokumentera alltid vilka som deltog och affärssyftet.',
+                a: 'Momsavdrag för representation beräknas separat per momssats. Mat (12% moms): avdragsgill ingående moms = underlag × 12%, max underlag 90 kr/person exkl. moms = max 10,80 kr/person. Alkohol (25% moms): ingen avdragsrätt alls. OBS: Den gamla 46 kr-schablonen gällde vid 25% moms på hela måltiden och är inte längre tillämplig när mat och alkohol har olika momssatser.',
+                simplified: 'Du beräknar momsavdraget separat för mat och alkohol. Mat med 12% moms: avdrag på underlag upp till 90 kr per person exkl. moms, vilket ger max 10,80 kr i avdragsgill moms per person. Alkohol: noll i momsavdrag. Dokumentera alltid deltagarnas namn, antal och affärssyfte.',
                 sources: 'ML 8:9 · SKV A 2025:2',
                 risk: 'MEDEL', riskColor: '#7A6010',
               },
@@ -539,7 +538,6 @@ export default function Landing() {
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
             <a href="/register" className="btn-primary">Testa gratis — 14 dagar</a>
-            <a href="mailto:hej@normiq.se" className="btn-ghost" style={{ borderColor: '#333', color: '#666' }}>Boka demo</a>
           </div>
         </div>
       </section>
