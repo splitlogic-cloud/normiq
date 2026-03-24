@@ -122,10 +122,10 @@ function boostScore(r: { metadata: { lag?: string }; similarity: number }): numb
 }
 
 // ── RETRY-LOGIK FÖR 529 OVERLOADED ───────────────────────────────────────
-async function createMessageWithRetry(params: Parameters<typeof client.messages.create>[0], maxRetries = 3) {
+async function createMessageWithRetry(params: Parameters<typeof client.messages.create>[0], maxRetries = 3): Promise<Anthropic.Message> {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      return await client.messages.create(params)
+      return await client.messages.create({ ...params, stream: false }) as Anthropic.Message
     } catch (err: unknown) {
       const isOverloaded = (err as { status?: number })?.status === 529
       if (isOverloaded && attempt < maxRetries) {
