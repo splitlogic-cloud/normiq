@@ -464,7 +464,7 @@ export default function Landing() {
                 </div>
                 <div style={{ padding: '12px 22px', borderTop: '1px solid #F0EDE6', background: '#FAFAF8' }}>
                   <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#888', lineHeight: 1.75 }}>
-                    Representation — avdragsrätt saknas för inkomstskatt (IL 16:2). Ingående moms bokförs mot 2641. Enbart mat (12% moms): max avdragsgill moms 36 kr/person (12% × 300 kr underlag). Ange antal gäster för korrekt beräkning.
+                    Representation — avdragsrätt saknas för inkomstskatt (IL 16:2). Ingående moms 193 kr bokförs mot 2641, avdragsgill del beror på antal gäster (max 10,80 kr/person).
                   </div>
                 </div>
               </div>
