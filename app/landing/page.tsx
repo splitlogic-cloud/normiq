@@ -260,7 +260,7 @@ export default function Landing() {
               },
               {
                 q: 'Vad gäller för representation avseende moms?',
-                a: 'Momsavdrag för representation medges på underlag om högst 300 kr exkl. moms per person. Enbart mat (12% moms): max 36 kr/person. Mat + alkohol — schablon: 46 kr/person om kostnad >300 kr exkl. moms och debiterad moms ≥46 kr. Mat + alkohol — proportionering: beräkna mat och alkohol separat utifrån faktiska kostnader. OBS fr.o.m. 1 april 2026: om restaurangen tillämpar 6% livsmedelsmoms gäller ny schablon om 33 kr/person.',
+                a: 'Momsavdrag för representation medges på underlag om högst 300 kr exkl. moms per person. Enbart mat (ä moms): max 36 kr/person. Mat + alkohol — schablon: 46 kr/person om kostnad >300 kr exkl. moms och debiterad moms ≥46 kr. Mat + alkohol — proportionering: beräkna mat och alkohol separat utifrån faktiska kostnader. OBS fr.o.m. 1 april 2026: om restaurangen tillämpar 6% livsmedelsmoms gäller ny schablon om 33 kr/person.',
                 simplified: 'Du kan välja mellan två metoder när måltiden innehåller både mat och alkohol. Antingen schablonen (46 kr/person) om notan överstiger 300 kr exkl. moms — eller proportionering utifrån faktiska kostnader. Enbart mat utan alkohol: max 36 kr/person. Dokumentera alltid vilka som deltog och affärssyftet.',
                 sources: 'ML 8:9 · SKV A 2025:2',
                 risk: 'MEDEL', riskColor: '#7A6010',
