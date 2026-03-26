@@ -164,6 +164,7 @@ export default function App() {
   const [popular, setPopular]     = useState<{ question: string; count: number }[]>([])
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([])
   const [sessionId]               = useState(() => crypto.randomUUID())
+  const [userRole, setUserRole]   = useState<string>('user')
   const [inputMode, setInputMode]         = useState<InputMode>('fritext')
   const [receiptText, setReceiptText]     = useState('')
   const [receiptParsed, setReceiptParsed] = useState(false)
@@ -179,7 +180,12 @@ export default function App() {
   const supabase    = createClient()
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
-  useEffect(() => { loadHistory(); loadPopular(); loadAnalysisHistory() }, [])
+  useEffect(() => {
+    loadHistory()
+    loadPopular()
+    loadAnalysisHistory()
+    loadUserRole()
+  }, [])
 
   async function loadHistory() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -200,6 +206,17 @@ export default function App() {
     for (const row of data) { const q = row.question.trim().toLowerCase(); counts[q] = (counts[q] || 0) + 1 }
     const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([question, count]) => ({ question: question.charAt(0).toUpperCase() + question.slice(1), count }))
     setPopular(sorted)
+  }
+
+  async function loadUserRole() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+    if (profile?.role) setUserRole(profile.role)
   }
 
   function loadFromHistory(item: HistoryItem) {
@@ -306,21 +323,33 @@ export default function App() {
             <button
               className={`nav-link${mode === 'advisor' ? ' active' : ''}`}
               onClick={() => setMode('advisor')}
-              style={{ width: '100%', cursor: 'pointer', background: mode === 'advisor' ? '#0A0A0C' : 'transparent', color: mode === 'advisor' ? 'white' : '#666', border: `1px solid ${mode === 'advisor' ? '#0A0A0C' : 'transparent'}` }}>
+              style={{ width: '100%', cursor: 'pointer', background: mode === 'advisor' ? '#0A0A0C' : 'transparent', color: mode === 'advisor' ? 'white' : '#666', border: `1px solid ${mode === 'advisor' ? '#0A0A0C' : 'transparent'}` }}
+              onMouseEnter={e => { if (mode !== 'advisor') { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}}
+              onMouseLeave={e => { if (mode !== 'advisor') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = 'transparent' }}}>
               <span style={{ fontSize: 12, opacity: .7 }}>§</span> Advisor
             </button>
             <button
               className={`nav-link${mode === 'analyze' ? ' active' : ''}`}
               onClick={() => setMode('analyze')}
-              style={{ width: '100%', cursor: 'pointer', background: mode === 'analyze' ? '#0A0A0C' : 'transparent', color: mode === 'analyze' ? 'white' : '#666', border: `1px solid ${mode === 'analyze' ? '#0A0A0C' : 'transparent'}` }}>
+              style={{ width: '100%', cursor: 'pointer', background: mode === 'analyze' ? '#0A0A0C' : 'transparent', color: mode === 'analyze' ? 'white' : '#666', border: `1px solid ${mode === 'analyze' ? '#0A0A0C' : 'transparent'}` }}
+              onMouseEnter={e => { if (mode !== 'analyze') { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}}
+              onMouseLeave={e => { if (mode !== 'analyze') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = 'transparent' }}}>
               <span style={{ fontSize: 12, opacity: .7 }}>◈</span> Tax Brain
             </button>
-            <a href="/agency" className="nav-link">
-              <span style={{ fontSize: 12, opacity: .7 }}>⊞</span> Byråvy
+            <a href="/agency"
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', color: '#666', textDecoration: 'none', transition: 'all .15s', marginBottom: 3, border: '1px solid transparent', width: '100%', boxSizing: 'border-box' as const }}
+              onMouseEnter={e => { const el = e.currentTarget; el.style.background = '#0A0A0C'; el.style.color = 'white'; el.style.borderColor = '#0A0A0C' }}
+              onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'transparent'; el.style.color = '#666'; el.style.borderColor = 'transparent' }}>
+              <span style={{ fontSize: 12, flexShrink: 0, opacity: .7 }}>⊞</span> Byråvy
             </a>
-            <a href="/library" className="nav-link">
-              <span style={{ fontSize: 12, opacity: .7 }}>▤</span> Bibliotek
-            </a>
+            {(userRole === 'admin' || userRole === 'reviewer') && (
+              <a href="/library"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', color: '#666', textDecoration: 'none', transition: 'all .15s', marginBottom: 3, border: '1px solid transparent', width: '100%', boxSizing: 'border-box' as const }}
+                onMouseEnter={e => { const el = e.currentTarget; el.style.background = '#0A0A0C'; el.style.color = 'white'; el.style.borderColor = '#0A0A0C' }}
+                onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'transparent'; el.style.color = '#666'; el.style.borderColor = 'transparent' }}>
+                <span style={{ fontSize: 12, flexShrink: 0, opacity: .7 }}>§</span> Kunskapsbibliotek
+              </a>
+            )}
           </div>
 
           <div style={{ padding: '8px 10px 6px' }}>

@@ -1,5 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase'
 
 type Answer = {
   id: string
@@ -30,7 +32,36 @@ const DEMO: Answer[] = [
 ]
 
 export default function LibraryPage() {
+  const router = useRouter()
+  const supabase = createClient()
   const [answers, setAnswers] = useState<Answer[]>(DEMO)
+  const [accessChecked, setAccessChecked] = useState(false)
+
+  useEffect(() => {
+    async function checkAccess() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { router.replace('/login'); return }
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      if (!profile || (profile.role !== 'admin' && profile.role !== 'reviewer')) {
+        router.replace('/app')
+        return
+      }
+      setAccessChecked(true)
+    }
+    checkAccess()
+  }, [])
+
+  if (!accessChecked) {
+    return (
+      <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#F5F3EE', fontFamily: 'DM Mono, monospace', fontSize: 12, color: '#CCC', letterSpacing: '.06em' }}>
+        Kontrollerar behörighet...
+      </div>
+    )
+  }
   const [selected, setSelected] = useState<Answer | null>(DEMO[0])
   const [category, setCategory] = useState('Alla')
   const [filter, setFilter] = useState<'all' | 'verified' | 'pending'>('all')
@@ -100,7 +131,7 @@ export default function LibraryPage() {
       `}</style>
 
       {/* ── LINKER KOLUMN: Frågelista ── */}
-      <div style={{ width: 360, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div style={{ width: 320, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
 
         {/* Header */}
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #E0DDD6' }}>
@@ -139,12 +170,7 @@ export default function LibraryPage() {
           </div>
         </div>
 
-        {/* Kategoriflikar */}
-        <div style={{ display: 'flex', borderBottom: '1px solid #E0DDD6', overflowX: 'auto', background: 'white' }}>
-          {CATEGORIES.map(c => (
-            <button key={c} className={`cat-btn${category === c ? ' active' : ''}`} onClick={() => setCategory(c)}>{c}</button>
-          ))}
-        </div>
+
 
         {/* Frågelista */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -238,7 +264,7 @@ export default function LibraryPage() {
                       style={{ width: '100%', minHeight: 320, padding: '20px 22px', border: '1.5px solid #0A0A0C', borderRadius: 8, fontFamily: 'Georgia, serif', fontSize: 15, color: '#0A0A0C', background: 'white', outline: 'none', resize: 'vertical', lineHeight: 1.85 }}
                     />
                   ) : (
-                    <div style={{ background: 'white', border: '1px solid #E0DDD6', borderRadius: 8, padding: '20px 22px', fontFamily: 'Georgia, serif', fontSize: 15, color: '#333', lineHeight: 1.85, whiteSpace: 'pre-wrap', minHeight: 200 }}>
+                    <div style={{ background: 'white', border: '1px solid #E0DDD6', borderRadius: 8, padding: '20px 22px', fontFamily: 'Georgia, serif', fontSize: 15, color: '#333', lineHeight: 1.85, whiteSpace: 'pre-wrap', minHeight: 280 }}>
                       {selected.answer || <span style={{ color: '#CCC', fontStyle: 'italic' }}>Inget svar ännu — redigera och verifiera</span>}
                     </div>
                   )}
