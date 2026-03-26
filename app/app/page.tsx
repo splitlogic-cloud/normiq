@@ -12,13 +12,6 @@ const LAG_URLS: Record<string, string> = {
   SKV: 'https://www.skatteverket.se/rattsinformation/stallningstaganden.4.html',
 }
 
-const ADVISOR_SUGGESTIONS = [
-  'Hur mycket kan jag ta ut i utdelning från mitt fåmansbolag?',
-  'Vad gäller för representation och avdragsrätt?',
-  'Hur bokför jag en faktura med 25% moms?',
-  'Vad är skillnaden mellan K2 och K3?',
-]
-
 const ANALYZE_EXAMPLES = [
   { description: 'MacBook Air 13"', amount: 14990 },
   { description: 'Restaurang klientmöte', amount: 1800 },
@@ -154,17 +147,57 @@ function ConfidenceDots({ value }: { value: number }) {
   return <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>{[1,2,3,4,5].map(i => <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: i <= filled ? '#0A0A0C' : '#E0DDD6' }} />)}</div>
 }
 
+// ── Sidebar nav-länk-hjälpkomponent ──
+function NavItem({ icon, label, active, onClick, href, badge }: {
+  icon: string; label: string; active?: boolean; onClick?: () => void; href?: string; badge?: string
+}) {
+  const baseStyle: React.CSSProperties = {
+    width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px',
+    borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em',
+    textTransform: 'uppercase', cursor: 'pointer', marginBottom: 3, border: '1px solid transparent',
+    textDecoration: 'none', transition: 'all .15s', boxSizing: 'border-box' as const,
+    background: active ? '#0A0A0C' : 'transparent',
+    color: active ? 'white' : '#666',
+  }
+  const content = (
+    <>
+      <span style={{ fontSize: 12, flexShrink: 0, opacity: .7 }}>{icon}</span>
+      {label}
+      {badge && (
+        <span style={{ marginLeft: 'auto', fontFamily: 'DM Mono, monospace', fontSize: 8, letterSpacing: '.08em', color: '#C0321A', background: '#FDF4F3', border: '1px solid rgba(192,50,26,.2)', padding: '2px 6px', borderRadius: 10 }}>
+          {badge}
+        </span>
+      )}
+    </>
+  )
+  if (href) return (
+    <a href={href} style={baseStyle}
+      onMouseEnter={e => { if (!active) { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}}
+      onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = 'transparent' }}}>
+      {content}
+    </a>
+  )
+  return (
+    <button style={baseStyle} onClick={onClick}
+      onMouseEnter={e => { if (!active) { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}}
+      onMouseLeave={e => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = 'transparent' }}}>
+      {content}
+    </button>
+  )
+}
+
 export default function App() {
-  const [mode, setMode]           = useState<AppMode>('advisor')
-  const [messages, setMessages]   = useState<Message[]>([])
-  const [input, setInput]         = useState('')
-  const [loading, setLoading]     = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [history, setHistory]     = useState<HistoryItem[]>([])
-  const [popular, setPopular]     = useState<{ question: string; count: number }[]>([])
+  // ── Alla hooks högst upp ──
+  const [mode, setMode]                   = useState<AppMode>('advisor')
+  const [messages, setMessages]           = useState<Message[]>([])
+  const [input, setInput]                 = useState('')
+  const [loading, setLoading]             = useState(false)
+  const [sidebarOpen, setSidebarOpen]     = useState(true)
+  const [history, setHistory]             = useState<HistoryItem[]>([])
+  const [popular, setPopular]             = useState<{ question: string; count: number }[]>([])
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistoryItem[]>([])
-  const [sessionId]               = useState(() => crypto.randomUUID())
-  const [userRole, setUserRole]   = useState<string>('user')
+  const [sessionId]                       = useState(() => crypto.randomUUID())
+  const [userRole, setUserRole]           = useState<string>('user')
   const [inputMode, setInputMode]         = useState<InputMode>('fritext')
   const [receiptText, setReceiptText]     = useState('')
   const [receiptParsed, setReceiptParsed] = useState(false)
@@ -212,17 +245,12 @@ export default function App() {
     try {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
-      // Hämta roll via API-route som använder service role key
-      const res = await fetch('/api/user-role', {
-        headers: { 'x-user-id': user.id }
-      })
+      const res = await fetch('/api/user-role', { headers: { 'x-user-id': user.id } })
       if (res.ok) {
         const data = await res.json()
         if (data.role) setUserRole(data.role)
       }
-    } catch {
-      // tyst fel
-    }
+    } catch { /* tyst fel */ }
   }
 
   function loadFromHistory(item: HistoryItem) {
@@ -272,6 +300,9 @@ export default function App() {
 
   async function logout() { await supabase.auth.signOut(); window.location.href = '/login' }
 
+  const isAdmin = userRole === 'admin'
+  const isAdminOrReviewer = userRole === 'admin' || userRole === 'reviewer'
+
   return (
     <div style={{ display: 'flex', height: '100vh', background: '#F5F3EE', fontFamily: 'Georgia, serif' }}>
       <style>{`
@@ -282,8 +313,6 @@ export default function App() {
         ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #D0CCC4; border-radius: 2px; }
         .hist-item { padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background .15s; border: 1px solid transparent; }
         .hist-item:hover { background: rgba(192,50,26,.05); border-color: rgba(192,50,26,.1); }
-        .popular-item { padding: 8px 12px; cursor: pointer; border-radius: 6px; transition: all .15s; border: 1px solid #F0EDE6; background: #FAFAF8; display: flex; align-items: flex-start; gap: 8px; }
-        .popular-item:hover { background: #FDF4F3; border-color: rgba(192,50,26,.2); }
         .suggestion-btn { padding: 16px 18px; border: 1px solid #E0DDD6; background: white; cursor: pointer; text-align: left; border-radius: 6px; transition: all .2s; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 18px; color: #333; line-height: 1.35; }
         .suggestion-btn:hover { border-color: #C0321A; background: #FDF9F8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(192,50,26,.07); }
         .example-btn { padding: 12px 14px; border: 1px solid #E0DDD6; background: white; cursor: pointer; text-align: left; border-radius: 6px; transition: all .2s; }
@@ -299,13 +328,8 @@ export default function App() {
         .top-btn:hover { border-color: #0A0A0C; color: #0A0A0C; } .top-btn.danger:hover { border-color: #C0321A; color: #C0321A; }
         .feedback-btn { width: 28px; height: 28px; border-radius: 5px; border: 1px solid #E0DDD6; background: white; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: center; transition: all .15s; }
         .feedback-btn:hover { border-color: #888; background: #F5F3EE; }
-        .mode-btn { flex: 1; padding: 8px 0; border: none; background: none; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #BBB; border-radius: 5px; transition: all .2s; }
-        .mode-btn.active { background: #0A0A0C; color: white; } .mode-btn:not(.active):hover { color: #555; background: #F5F3EE; }
         .run-btn { width: 100%; padding: 12px; background: #0A0A0C; border: none; border-radius: 8px; color: white; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; transition: background .2s; }
         .run-btn:hover:not(:disabled) { background: #C0321A; } .run-btn:disabled { background: #D0CCC4; cursor: not-allowed; }
-        .nav-link { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #888; text-decoration: none; transition: all .15s; margin-bottom: 2px; }
-        .nav-link:hover { background: #0A0A0C; color: white; }
-        .nav-link.active { background: #0A0A0C; color: white; }
         @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
         @keyframes pulse  { 0%,100%{opacity:.25} 50%{opacity:.9} }
         .msg-in { animation: fadeUp .3s both; } .result-in { animation: fadeUp .25s both; }
@@ -313,9 +337,11 @@ export default function App() {
         .typing span:nth-child(2) { animation-delay: .22s; } .typing span:nth-child(3) { animation-delay: .44s; }
       `}</style>
 
-      {/* SIDEBAR */}
+      {/* ── SIDEBAR ── */}
       {sidebarOpen && (
         <aside style={{ width: 276, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+
+          {/* Logo */}
           <div style={{ padding: '20px 20px 14px', borderBottom: '1px solid #E0DDD6' }}>
             <a href="/landing" style={{ textDecoration: 'none' }}>
               <span className="cg" style={{ fontSize: 27, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.02em', lineHeight: 1 }}>
@@ -326,37 +352,28 @@ export default function App() {
 
           {/* Modulnavigation */}
           <div style={{ padding: '10px 10px 6px', borderBottom: '1px solid #E0DDD6' }}>
-            <button
-              className={`nav-link${mode === 'advisor' ? ' active' : ''}`}
-              onClick={() => setMode('advisor')}
-              style={{ width: '100%', cursor: 'pointer', background: mode === 'advisor' ? '#0A0A0C' : 'transparent', color: mode === 'advisor' ? 'white' : '#666', border: `1px solid ${mode === 'advisor' ? '#0A0A0C' : 'transparent'}` }}
-              onMouseEnter={e => { if (mode !== 'advisor') { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}}
-              onMouseLeave={e => { if (mode !== 'advisor') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = 'transparent' }}}>
-              <span style={{ fontSize: 12, opacity: .7 }}>§</span> Advisor
-            </button>
-            <button
-              className={`nav-link${mode === 'analyze' ? ' active' : ''}`}
-              onClick={() => setMode('analyze')}
-              style={{ width: '100%', cursor: 'pointer', background: mode === 'analyze' ? '#0A0A0C' : 'transparent', color: mode === 'analyze' ? 'white' : '#666', border: `1px solid ${mode === 'analyze' ? '#0A0A0C' : 'transparent'}` }}
-              onMouseEnter={e => { if (mode !== 'analyze') { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}}
-              onMouseLeave={e => { if (mode !== 'analyze') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = 'transparent' }}}>
-              <span style={{ fontSize: 12, opacity: .7 }}>◈</span> Tax Brain
-            </button>
+            <NavItem icon="§" label="Advisor" active={mode === 'advisor'} onClick={() => setMode('advisor')} />
+            <NavItem icon="◈" label="Tax Brain" active={mode === 'analyze'} onClick={() => setMode('analyze')} />
+
+            {/* Byråvy — kommer snart */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', color: '#CCC', marginBottom: 3, cursor: 'default' }}>
               <span style={{ fontSize: 12, flexShrink: 0, opacity: .4 }}>⊞</span>
               Byråvy
               <span style={{ marginLeft: 'auto', fontFamily: 'DM Mono, monospace', fontSize: 8, letterSpacing: '.08em', color: '#C0321A', background: '#FDF4F3', border: '1px solid rgba(192,50,26,.2)', padding: '2px 6px', borderRadius: 10 }}>SNART</span>
             </div>
-            {(userRole === 'admin' || userRole === 'reviewer') && (
-              <a href="/library"
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', color: '#666', textDecoration: 'none', transition: 'all .15s', marginBottom: 3, border: '1px solid transparent', width: '100%', boxSizing: 'border-box' as const }}
-                onMouseEnter={e => { const el = e.currentTarget; el.style.background = '#0A0A0C'; el.style.color = 'white'; el.style.borderColor = '#0A0A0C' }}
-                onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'transparent'; el.style.color = '#666'; el.style.borderColor = 'transparent' }}>
-                <span style={{ fontSize: 12, flexShrink: 0, opacity: .7 }}>§</span> Kunskapsbibliotek
-              </a>
+
+            {/* Kunskapsbibliotek — admin + reviewer */}
+            {isAdminOrReviewer && (
+              <NavItem icon="§" label="Kunskapsbibliotek" href="/library" />
+            )}
+
+            {/* Team — bara admin (ägare) */}
+            {isAdmin && (
+              <NavItem icon="⊹" label="Team" href="/app/team" />
             )}
           </div>
 
+          {/* Ny konversation / analys */}
           <div style={{ padding: '8px 10px 6px' }}>
             <button
               onClick={() => { if (mode === 'advisor') setMessages([]); else { setAnalyzeResult(null); setAnalyzeDesc(''); setAnalyzeAmount(''); setReceiptText(''); setReceiptParsed(false) } }}
@@ -415,8 +432,7 @@ export default function App() {
             )}
           </div>
 
-
-
+          {/* Footer */}
           <div style={{ padding: '12px 16px', borderTop: '1px solid #E0DDD6' }}>
             <div className="mono" style={{ fontSize: 10, color: '#C8C4BC', lineHeight: 1.8 }}>
               IL · ML · BFL · SFL · ABL<br />
@@ -426,7 +442,7 @@ export default function App() {
         </aside>
       )}
 
-      {/* MAIN */}
+      {/* ── MAIN ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
         {/* TOP BAR */}
@@ -443,7 +459,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* ADVISOR */}
+        {/* ── ADVISOR ── */}
         {mode === 'advisor' && (
           <>
             <div style={{ flex: 1, overflowY: 'auto', padding: '36px 48px' }}>
@@ -564,7 +580,7 @@ export default function App() {
           </>
         )}
 
-        {/* ANALYZE */}
+        {/* ── ANALYZE ── */}
         {mode === 'analyze' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '36px 48px' }}>
             <div style={{ maxWidth: 700, margin: '0 auto' }}>
@@ -605,7 +621,7 @@ export default function App() {
                 )}
                 {inputMode === 'kvitto' && (
                   <div>
-                    <div className="field-wrap" style={{ position: 'relative' }}>
+                    <div className="field-wrap">
                       <div className="mono" style={{ fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#BBB', marginBottom: 5 }}>Klistra in kvittotext</div>
                       <textarea value={receiptText} onChange={e => { setReceiptText(e.target.value); setReceiptParsed(false) }} placeholder={'Restaurang Pelikan\n2026-03-11\nMat & dryck\nTotalt: 1 800 kr inkl. 12% moms'} rows={5} style={{ width: '100%', border: 'none', background: 'transparent', fontFamily: 'DM Mono, monospace', fontSize: 12, color: '#333', lineHeight: 1.7, resize: 'vertical', minHeight: 100 }} />
                     </div>
