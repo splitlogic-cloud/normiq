@@ -2,7 +2,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-// supabase används bara för auth.getUser()
 
 type Answer = {
   id: string
@@ -35,17 +34,26 @@ const DEMO: Answer[] = [
 export default function LibraryPage() {
   const router = useRouter()
   const supabase = createClient()
+
+  // ── ALLA HOOKS HÖGST UPP — aldrig efter en tidig return ──
   const [answers, setAnswers] = useState<Answer[]>(DEMO)
   const [accessChecked, setAccessChecked] = useState(false)
+  const [selected, setSelected] = useState<Answer | null>(DEMO[0])
+  const [filter, setFilter] = useState<'all' | 'verified' | 'pending'>('all')
+  const [search, setSearch] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [verifierName, setVerifierName] = useState('')
+  const [editNote, setEditNote] = useState(DEMO[0]?.notes || '')
+  const [editCategory, setEditCategory] = useState(DEMO[0]?.category || 'Övrigt')
+  const [editAnswer, setEditAnswer] = useState(DEMO[0]?.answer || '')
+  const [editMode, setEditMode] = useState(false)
 
   useEffect(() => {
     async function checkAccess() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/login'); return }
       try {
-        const res = await fetch('/api/user-role', {
-          headers: { 'x-user-id': user.id }
-        })
+        const res = await fetch('/api/user-role', { headers: { 'x-user-id': user.id } })
         if (res.ok) {
           const data = await res.json()
           if (data.role === 'admin' || data.role === 'reviewer') {
@@ -59,6 +67,7 @@ export default function LibraryPage() {
     checkAccess()
   }, [])
 
+  // ── Tidig return EFTER alla hooks ──
   if (!accessChecked) {
     return (
       <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#F5F3EE', fontFamily: 'DM Mono, monospace', fontSize: 12, color: '#CCC', letterSpacing: '.06em' }}>
@@ -66,16 +75,6 @@ export default function LibraryPage() {
       </div>
     )
   }
-  const [selected, setSelected] = useState<Answer | null>(DEMO[0])
-  const [category, setCategory] = useState('Alla')
-  const [filter, setFilter] = useState<'all' | 'verified' | 'pending'>('all')
-  const [search, setSearch] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [verifierName, setVerifierName] = useState('')
-  const [editNote, setEditNote] = useState('')
-  const [editCategory, setEditCategory] = useState('')
-  const [editAnswer, setEditAnswer] = useState('')
-  const [editMode, setEditMode] = useState(false)
 
   function selectAnswer(a: Answer) {
     setSelected(a)
@@ -88,7 +87,6 @@ export default function LibraryPage() {
   const filtered = answers.filter(a => {
     if (filter === 'verified' && !a.verified_by) return false
     if (filter === 'pending' && a.verified_by) return false
-    if (category !== 'Alla' && a.category !== category) return false
     if (search && !a.question.toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
@@ -129,15 +127,11 @@ export default function LibraryPage() {
         .q-item { padding: 14px 18px; border-bottom: 1px solid #F0EDE6; cursor: pointer; background: white; transition: background .1s; border-left: 3px solid transparent; }
         .q-item:hover { background: #FAFAF8; }
         .q-item.active { background: #FDF9F5; border-left-color: #C0321A; }
-        .cat-btn { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 10px 12px; cursor: pointer; color: #AAA; background: none; border: none; border-bottom: 2px solid transparent; transition: all .15s; white-space: nowrap; }
-        .cat-btn.active { color: #0A0A0C; border-bottom-color: #C0321A; }
         .filter-btn { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 6px 12px; border-radius: 4px; cursor: pointer; border: 1.5px solid; transition: all .15s; }
       `}</style>
 
-      {/* ── LINKER KOLUMN: Frågelista ── */}
+      {/* ── VÄNSTER KOLUMN ── */}
       <div style={{ width: 320, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-
-        {/* Header */}
         <div style={{ padding: '20px 20px 16px', borderBottom: '1px solid #E0DDD6' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
             <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 22, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.01em' }}>
@@ -154,7 +148,6 @@ export default function LibraryPage() {
           </div>
         </div>
 
-        {/* Sök + filter */}
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #E0DDD6', background: '#FAFAF8' }}>
           <input
             value={search}
@@ -174,9 +167,6 @@ export default function LibraryPage() {
           </div>
         </div>
 
-
-
-        {/* Frågelista */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {filtered.length === 0 && (
             <div style={{ padding: 32, textAlign: 'center', fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#CCC', letterSpacing: '.06em' }}>
@@ -207,10 +197,8 @@ export default function LibraryPage() {
         </div>
       </div>
 
-      {/* ── HÖGER: Svar + verifiering ── */}
+      {/* ── HÖGER ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
-        {/* Topbar */}
         <div style={{ background: 'white', borderBottom: '1px solid #E0DDD6', padding: '14px 32px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <a href="/app" style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#AAA', textDecoration: 'none', letterSpacing: '.06em', textTransform: 'uppercase' }}>
             ← Tillbaka
@@ -227,11 +215,9 @@ export default function LibraryPage() {
           </div>
         ) : (
           <div style={{ flex: 1, display: 'grid', gridTemplateRows: '1fr auto', overflow: 'hidden' }}>
-
             <div style={{ overflowY: 'auto', padding: '32px 40px' }}>
               <div style={{ maxWidth: 780 }}>
 
-                {/* Frågan */}
                 <div style={{ marginBottom: 24 }}>
                   <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 28, fontWeight: 600, color: '#0A0A0C', lineHeight: 1.2, letterSpacing: '-.01em', marginBottom: 12 }}>
                     {selected.question}
@@ -251,22 +237,17 @@ export default function LibraryPage() {
                   </div>
                 </div>
 
-                {/* Svarsrutan — stor och tydlig */}
                 <div style={{ marginBottom: 28 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#AAA' }}>Normiq-svar</div>
-                    <button
-                      onClick={() => setEditMode(!editMode)}
+                    <button onClick={() => setEditMode(!editMode)}
                       style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: editMode ? '#C0321A' : '#AAA', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '.06em', textTransform: 'uppercase' }}>
                       {editMode ? '✕ Avbryt redigering' : '✎ Redigera'}
                     </button>
                   </div>
                   {editMode ? (
-                    <textarea
-                      value={editAnswer}
-                      onChange={e => setEditAnswer(e.target.value)}
-                      style={{ width: '100%', minHeight: 320, padding: '20px 22px', border: '1.5px solid #0A0A0C', borderRadius: 8, fontFamily: 'Georgia, serif', fontSize: 15, color: '#0A0A0C', background: 'white', outline: 'none', resize: 'vertical', lineHeight: 1.85 }}
-                    />
+                    <textarea value={editAnswer} onChange={e => setEditAnswer(e.target.value)}
+                      style={{ width: '100%', minHeight: 320, padding: '20px 22px', border: '1.5px solid #0A0A0C', borderRadius: 8, fontFamily: 'Georgia, serif', fontSize: 15, color: '#0A0A0C', background: 'white', outline: 'none', resize: 'vertical', lineHeight: 1.85 }} />
                   ) : (
                     <div style={{ background: 'white', border: '1px solid #E0DDD6', borderRadius: 8, padding: '20px 22px', fontFamily: 'Georgia, serif', fontSize: 15, color: '#333', lineHeight: 1.85, whiteSpace: 'pre-wrap', minHeight: 280 }}>
                       {selected.answer || <span style={{ color: '#CCC', fontStyle: 'italic' }}>Inget svar ännu — redigera och verifiera</span>}
@@ -274,7 +255,6 @@ export default function LibraryPage() {
                   )}
                 </div>
 
-                {/* Lagrum */}
                 {selected.lagrum?.length > 0 && (
                   <div style={{ marginBottom: 24 }}>
                     <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#AAA', marginBottom: 8 }}>Lagrum</div>
@@ -286,10 +266,8 @@ export default function LibraryPage() {
                   </div>
                 )}
 
-                {/* Divider */}
                 <div style={{ height: 1, background: '#F0EDE6', marginBottom: 24 }} />
 
-                {/* Verifieringsformulär */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
                   <div>
                     <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#AAA', marginBottom: 8 }}>Kategori</div>
@@ -323,22 +301,17 @@ export default function LibraryPage() {
                     ✓ Svaret har återanvänts {selected.use_count} gånger
                   </div>
                 )}
-
               </div>
             </div>
 
-            {/* Knappar — sticky längst ner */}
             <div style={{ padding: '16px 40px', borderTop: '1px solid #E0DDD6', background: 'white', display: 'flex', gap: 10, alignItems: 'center' }}>
-              <button
-                onClick={verify}
-                disabled={saving || !verifierName.trim()}
+              <button onClick={verify} disabled={saving || !verifierName.trim()}
                 style={{ padding: '13px 28px', background: saving || !verifierName.trim() ? '#CCC' : '#2E6644', color: 'white', border: 'none', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 12, letterSpacing: '.08em', textTransform: 'uppercase', cursor: saving || !verifierName.trim() ? 'not-allowed' : 'pointer', transition: 'background .15s' }}
                 onMouseEnter={e => { if (!saving && verifierName.trim()) e.currentTarget.style.background = '#1A6B3A' }}
                 onMouseLeave={e => { if (!saving && verifierName.trim()) e.currentTarget.style.background = '#2E6644' }}>
                 {saving ? 'Sparar...' : '✓ Verifiera och aktivera'}
               </button>
-              <button
-                onClick={() => deactivate(selected.id)}
+              <button onClick={() => deactivate(selected.id)}
                 style={{ padding: '13px 20px', background: 'transparent', color: '#C0321A', border: '1.5px solid rgba(192,50,26,.3)', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 12, cursor: 'pointer', transition: 'background .15s' }}
                 onMouseEnter={e => e.currentTarget.style.background = '#FDF4F3'}
                 onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
@@ -350,7 +323,6 @@ export default function LibraryPage() {
                 </span>
               )}
             </div>
-
           </div>
         )}
       </div>
