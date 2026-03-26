@@ -209,14 +209,20 @@ export default function App() {
   }
 
   async function loadUserRole() {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-    if (profile?.role) setUserRole(profile.role)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      // Hämta roll via API-route som använder service role key
+      const res = await fetch('/api/user-role', {
+        headers: { 'x-user-id': user.id }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (data.role) setUserRole(data.role)
+      }
+    } catch {
+      // tyst fel
+    }
   }
 
   function loadFromHistory(item: HistoryItem) {
@@ -336,12 +342,11 @@ export default function App() {
               onMouseLeave={e => { if (mode !== 'analyze') { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = 'transparent' }}}>
               <span style={{ fontSize: 12, opacity: .7 }}>◈</span> Tax Brain
             </button>
-            <a href="/agency"
-              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', color: '#666', textDecoration: 'none', transition: 'all .15s', marginBottom: 3, border: '1px solid transparent', width: '100%', boxSizing: 'border-box' as const }}
-              onMouseEnter={e => { const el = e.currentTarget; el.style.background = '#0A0A0C'; el.style.color = 'white'; el.style.borderColor = '#0A0A0C' }}
-              onMouseLeave={e => { const el = e.currentTarget; el.style.background = 'transparent'; el.style.color = '#666'; el.style.borderColor = 'transparent' }}>
-              <span style={{ fontSize: 12, flexShrink: 0, opacity: .7 }}>⊞</span> Byråvy
-            </a>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', color: '#CCC', marginBottom: 3, cursor: 'default' }}>
+              <span style={{ fontSize: 12, flexShrink: 0, opacity: .4 }}>⊞</span>
+              Byråvy
+              <span style={{ marginLeft: 'auto', fontFamily: 'DM Mono, monospace', fontSize: 8, letterSpacing: '.08em', color: '#C0321A', background: '#FDF4F3', border: '1px solid rgba(192,50,26,.2)', padding: '2px 6px', borderRadius: 10 }}>SNART</span>
+            </div>
             {(userRole === 'admin' || userRole === 'reviewer') && (
               <a href="/library"
                 style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', color: '#666', textDecoration: 'none', transition: 'all .15s', marginBottom: 3, border: '1px solid transparent', width: '100%', boxSizing: 'border-box' as const }}

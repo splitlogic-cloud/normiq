@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
+// supabase används bara för auth.getUser()
 
 type Answer = {
   id: string
@@ -41,16 +42,19 @@ export default function LibraryPage() {
     async function checkAccess() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.replace('/login'); return }
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
-      if (!profile || (profile.role !== 'admin' && profile.role !== 'reviewer')) {
-        router.replace('/app')
-        return
-      }
-      setAccessChecked(true)
+      try {
+        const res = await fetch('/api/user-role', {
+          headers: { 'x-user-id': user.id }
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.role === 'admin' || data.role === 'reviewer') {
+            setAccessChecked(true)
+            return
+          }
+        }
+      } catch { /* tyst */ }
+      router.replace('/app')
     }
     checkAccess()
   }, [])
