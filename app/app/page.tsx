@@ -281,8 +281,8 @@ export default function App() {
         .run-btn { width: 100%; padding: 12px; background: #0A0A0C; border: none; border-radius: 8px; color: white; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; cursor: pointer; transition: background .2s; }
         .run-btn:hover:not(:disabled) { background: #C0321A; } .run-btn:disabled { background: #D0CCC4; cursor: not-allowed; }
         .nav-link { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 6px; font-family: 'DM Mono', monospace; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #888; text-decoration: none; transition: all .15s; margin-bottom: 2px; }
-        .nav-link:hover { background: #F5F3EE; color: #0A0A0C; }
-        .nav-link.active { background: #F5F3EE; color: #0A0A0C; }
+        .nav-link:hover { background: #0A0A0C; color: white; }
+        .nav-link.active { background: #0A0A0C; color: white; }
         @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:none; } }
         @keyframes pulse  { 0%,100%{opacity:.25} 50%{opacity:.9} }
         .msg-in { animation: fadeUp .3s both; } .result-in { animation: fadeUp .25s both; }
@@ -301,12 +301,26 @@ export default function App() {
             </a>
           </div>
 
-          {/* Mode toggle */}
-          <div style={{ padding: '10px 10px 0' }}>
-            <div style={{ display: 'flex', gap: 4, background: '#F5F3EE', borderRadius: 7, padding: 3 }}>
-              <button className={`mode-btn${mode === 'advisor' ? ' active' : ''}`} onClick={() => setMode('advisor')}>Advisor</button>
-              <button className={`mode-btn${mode === 'analyze' ? ' active' : ''}`} onClick={() => setMode('analyze')}>Analyze</button>
-            </div>
+          {/* Modulnavigation */}
+          <div style={{ padding: '10px 10px 6px', borderBottom: '1px solid #E0DDD6' }}>
+            <button
+              className={`nav-link${mode === 'advisor' ? ' active' : ''}`}
+              onClick={() => setMode('advisor')}
+              style={{ width: '100%', cursor: 'pointer', background: mode === 'advisor' ? '#0A0A0C' : 'transparent', color: mode === 'advisor' ? 'white' : '#666', border: `1px solid ${mode === 'advisor' ? '#0A0A0C' : 'transparent'}` }}>
+              <span style={{ fontSize: 12, opacity: .7 }}>§</span> Advisor
+            </button>
+            <button
+              className={`nav-link${mode === 'analyze' ? ' active' : ''}`}
+              onClick={() => setMode('analyze')}
+              style={{ width: '100%', cursor: 'pointer', background: mode === 'analyze' ? '#0A0A0C' : 'transparent', color: mode === 'analyze' ? 'white' : '#666', border: `1px solid ${mode === 'analyze' ? '#0A0A0C' : 'transparent'}` }}>
+              <span style={{ fontSize: 12, opacity: .7 }}>◈</span> Tax Brain
+            </button>
+            <a href="/agency" className="nav-link">
+              <span style={{ fontSize: 12, opacity: .7 }}>⊞</span> Byråvy
+            </a>
+            <a href="/library" className="nav-link">
+              <span style={{ fontSize: 12, opacity: .7 }}>▤</span> Bibliotek
+            </a>
           </div>
 
           <div style={{ padding: '8px 10px 6px' }}>
@@ -324,19 +338,7 @@ export default function App() {
           <div style={{ flex: 1, overflowY: 'auto', padding: '2px 7px 8px' }}>
             {mode === 'advisor' ? (
               <>
-                {popular.length > 0 && (
-                  <>
-                    <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '8px 6px 5px' }}>Populärast</div>
-                    {popular.map((item, idx) => (
-                      <div key={idx} className="popular-item" onClick={() => sendMessage(item.question)}>
-                        <span className="mono" style={{ fontSize: 10, color: '#C0321A', flexShrink: 0, marginTop: 2 }}>{idx + 1}</span>
-                        <span style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#444', lineHeight: 1.4, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{item.question}</span>
-                      </div>
-                    ))}
-                    <div style={{ height: 1, background: '#F0EDE6', margin: '8px 4px' }} />
-                  </>
-                )}
-                <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '4px 6px 5px' }}>Tidigare frågor</div>
+                <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', padding: '8px 6px 5px' }}>Tidigare frågor</div>
                 {history.length === 0 ? (
                   <div className="mono" style={{ fontSize: 11, color: '#DDD', padding: '8px 10px', lineHeight: 1.7 }}>Dina frågor sparas här</div>
                 ) : (
@@ -379,19 +381,7 @@ export default function App() {
             )}
           </div>
 
-          {/* ── NAVIGERING TILL MODULER ── */}
-          <div style={{ padding: '8px 10px', borderTop: '1px solid #E0DDD6' }}>
-            <div className="mono" style={{ fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#CCC', padding: '6px 6px 6px' }}>Moduler</div>
-            <a href="/analyze" className="nav-link">
-              <span style={{ fontSize: 12, color: '#C0321A' }}>◈</span> Tax Brain
-            </a>
-            <a href="/agency" className="nav-link">
-              <span style={{ fontSize: 12, color: '#C0321A' }}>⊞</span> Byråvy
-            </a>
-            <a href="/library" className="nav-link">
-              <span style={{ fontSize: 12, color: '#C0321A' }}>§</span> Bibliotek
-            </a>
-          </div>
+
 
           <div style={{ padding: '12px 16px', borderTop: '1px solid #E0DDD6' }}>
             <div className="mono" style={{ fontSize: 10, color: '#C8C4BC', lineHeight: 1.8 }}>
@@ -430,9 +420,24 @@ export default function App() {
                   </div>
                   <h1 className="cg" style={{ fontSize: 'clamp(40px,4.5vw,64px)', color: '#0A0A0C', marginBottom: 14, lineHeight: .94, letterSpacing: '-.03em' }}>Vad vill du veta?</h1>
                   <p style={{ fontSize: 15, color: '#999', marginBottom: 36, lineHeight: 1.85 }}>Ställ en fråga om skatt, moms eller redovisning</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    {ADVISOR_SUGGESTIONS.map(s => <button key={s} className="suggestion-btn" onClick={() => sendMessage(s)}>{s}</button>)}
-                  </div>
+                  {popular.length > 0 ? (
+                    <div>
+                      <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', marginBottom: 12 }}>Populärast just nu</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {popular.slice(0, 6).map((item, idx) => (
+                          <button key={idx} className="suggestion-btn" onClick={() => sendMessage(item.question)} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 18px' }}>
+                            <span className="mono" style={{ fontSize: 11, color: '#C0321A', flexShrink: 0, marginTop: 3, minWidth: 16 }}>{idx + 1}</span>
+                            <span style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', fontSize: 18, color: '#333', lineHeight: 1.35, textAlign: 'left' }}>{item.question}</span>
+                            <span className="mono" style={{ fontSize: 10, color: '#CCC', flexShrink: 0, marginTop: 5, marginLeft: 'auto' }}>{item.count}×</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                      {['Hur mycket kan jag ta ut i utdelning från mitt fåmansbolag?','Vad gäller för representation och avdragsrätt?','Hur bokför jag en faktura med 25% moms?','Vad är skillnaden mellan K2 och K3?'].map(s => <button key={s} className="suggestion-btn" onClick={() => sendMessage(s)}>{s}</button>)}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ maxWidth: 800, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 28 }}>
