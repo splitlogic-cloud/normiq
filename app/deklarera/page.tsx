@@ -241,34 +241,32 @@ function calcStep3(base: number, vals: Record<string, number>) {
 }
 
 function calcEga(base: number, passiv: boolean, extraNed: number = 0, kommunalskattPct: number = 32.0) {
-  // Skatteverkets formel (NE blankett):
-  // R43 (25%-avdraget) = R42 * 0.25 direkt
-  // R47 (slutligt överskott) = R42 - R43 = R42 * 0.75
-  // Egenavgifter betalas separat via slutskattsedeln
+  // Vid underskott: ingen EGA, inget 25%-avdrag
+  // slutlig = base (negativt) = underskott av aktiv näring → INK1 ruta 10.2
+  if (base <= 0) {
+    return { sum: 0, ned: 0, netto: 0, avd25: 0, slutlig: base,
+      kom: 0, beg: 0, statlig: 0, ef: 0, rf: 0, tot: 0, isUnderskott: true }
+  }
   if (passiv) {
     const sls = Math.round(base * 0.2426)
-    const avd25 = Math.round(base * 0.25)  // SKV: 25% av underlaget direkt
+    const avd25 = Math.round(base * 0.25)
     const slutlig = base - avd25
     const kom = Math.round(slutlig * (kommunalskattPct / 100))
     const beg = Math.round(slutlig * 0.00279)
-    const statligBrytpunkt = 598500
-    const statlig = slutlig > statligBrytpunkt ? Math.round((slutlig - statligBrytpunkt) * 0.20) : 0
-    return { sum: sls, ned: 0, netto: sls, avd25, slutlig, kom, beg, statlig, ef: 0, rf: 0, tot: kom + beg + sls + statlig }
+    const statlig = slutlig > 598500 ? Math.round((slutlig - 598500) * 0.20) : 0
+    return { sum: sls, ned: 0, netto: sls, avd25, slutlig, kom, beg, statlig, ef: 0, rf: 0, tot: kom + beg + sls + statlig, isUnderskott: false }
   }
   const r = { ap: 0.1021, sj: 0.0364, fp: 0.026, ep: 0.006, as: 0.002, am: 0, al: 0.1162 }
   const parts = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(base * v)]))
   const sum = Object.values(parts).reduce((a, b) => a + b, 0)
   const ned = Math.min(Math.round(base * 0.075), 15000)
   const netto = Math.max(0, sum - ned - extraNed)
-  // Skatteverket: avdrag = underlag (base) × 0.25, INTE (base - netto_ega) × 0.25
   const avd25 = Math.round(base * 0.25)
-  const slutlig = base - avd25  // = base * 0.75
+  const slutlig = base - avd25
   const kom = Math.round(slutlig * (kommunalskattPct / 100))
   const beg = Math.round(slutlig * 0.00279)
-  // Statlig inkomstskatt 20% på inkomst över brytpunkten (598 500 kr för 2024)
-  const statligBrytpunkt = 598500
-  const statlig = slutlig > statligBrytpunkt ? Math.round((slutlig - statligBrytpunkt) * 0.20) : 0
-  return { ...parts, sum, ned, netto, avd25, slutlig, kom, beg, statlig, ef: 0, rf: 0, tot: kom + beg + netto + statlig }
+  const statlig = slutlig > 598500 ? Math.round((slutlig - 598500) * 0.20) : 0
+  return { ...parts, sum, ned, netto, avd25, slutlig, kom, beg, statlig, ef: 0, rf: 0, tot: kom + beg + netto + statlig, isUnderskott: false }
 }
 
 // ─── Formatting ──────────────────────────────
@@ -546,48 +544,62 @@ export default function DeklaraPage() {
       `#IDENTITET ${orgFull} ${dateFmt} ${timeFmt}`,
       sieData?.companyName ? `#NAMN ${sieData.companyName}` : '',
       '',
+      // Räkenskapsår
       u(7011, sieData?.fiscalYearStart || '20250101'),
-      u(7012, sieData?.fiscalYearEnd || '20251231'),
-      u(7023, 'X'),
-      '',
-      fv('R1') ? u(7400, Math.abs(fv('R1'))) : '',
-      fv('R2') ? u(7410, Math.abs(fv('R2'))) : '',
-      fv('R3') ? u(7420, Math.abs(fv('R3'))) : '',
-      '',
-      sumKost ? u(7501, Math.abs(sumKost)) : '',
-      fv('R13') ? u(7300, Math.abs(fv('R13'))) : '',
-      fv('R14') ? u(7380, Math.abs(fv('R14'))) : '',
-      fv('R15') ? u(7385, Math.abs(fv('R15'))) : '',
-      fv('R17') ? u(7285, Math.abs(fv('R17'))) : '',
-      '',
-      bokfOvsk > 0 ? u(7440, bokfOvsk) : '',
-      bokfOvsk > 0 ? u(7600, bokfOvsk) : '',
-      bokfOvsk < 0 ? u(7441, Math.abs(bokfOvsk)) : '',
-      bokfOvsk < 0 ? u(7601, Math.abs(bokfOvsk)) : '',
-      '',
-      r16hk ? u(7701, r16hk) : '',
+      u(7012, sieData?.fiscalYearEnd   || '20251231'),
+      u(7023, 'X'),  // Aktiv näring
+
+      // Intäkter (bevarar tecken — negativ intäkt är OK)
+      u(7400, fv('R1')),
+      fv('R2') ? u(7410, fv('R2')) : '',
+      fv('R3') ? u(7420, fv('R3')) : '',
+
+      // Kostnader
+      sumKost ? u(7501, sumKost) : '',
+
+      // Bokfört resultat — negativt = underskott, Visma skickar med negativt tecken
+      u(7440, bokfOvsk),
+      u(7600, bokfOvsk),
+
+      // Skattemässiga justeringar
+      r16hk  ? u(7701, r16hk)  : '',
       r22res ? u(7704, r22res) : '',
-      j.r10 ? u(7730, Math.abs(Math.round(j.r10||0))) : '',
-      j.r11 ? u(7731, Math.abs(Math.round(j.r11||0))) : '',
-      j.r12 ? u(7732, Math.abs(Math.round(j.r12||0))) : '',
-      j.r25_rf ? u(7745, Math.abs(Math.round(j.r25_rf||0))) : '',
-      j.useRF && j.r19 ? u(7750, Math.abs(Math.round(j.r19||0))) : '',
-      j.useRF && j.r20 ? u(7755, Math.abs(Math.round(j.r20||0))) : '',
-      r40 ? u(7713, Math.abs(r40)) : '',
-      r41 ? u(7714, Math.abs(r41)) : '',
-      '',
-      j.r24 ? u(7760, Math.abs(Math.round(j.r24||0))) : '',
-      (s3.dSLP||0) > 0 ? u(7762, Math.abs(s3.dSLP||0)) : '',
-      '',
-      r47 > 0 ? u(8046, 'X') : '',
-      r47 > 0 ? u(8000, 'X') : '',
-      r47 > 0 && ega.sum ? u(8009, Math.abs(ega.sum)) : '',
-      r47 > 0 && ega.ned ? u(8011, Math.abs(ega.ned)) : '',
-      r47 > 0 && ega.avd25 ? u(8012, Math.abs(ega.avd25)) : '',
-      '',
-      r47 > 0 ? u(7630, r47) : '',
-      r47 <= 0 ? u(7631, Math.abs(r47)) : '',
-      '',
+
+      // Periodiseringsfond
+      j.r10 ? u(7730, Math.round(j.r10||0)) : '',   // Avsättning
+      j.r11 ? u(7608, Math.round(j.r11||0)) : '',   // Obligatorisk återföring
+      j.r12 ? u(7608, Math.round(j.r12||0)) : '',   // Frivillig återföring (samma kod)
+
+      // Räntefördelning
+      j.r25_rf ? u(7745, Math.round(j.r25_rf||0)) : '',
+      j.useRF && j.r19 ? u(7750, Math.round(j.r19||0)) : '',
+      j.useRF && j.r20 ? u(7755, Math.round(j.r20||0)) : '',
+
+      // §G Egenavgifter föregående år
+      // 7610 = medgivna (R40), 7713 = påförda (R41) — Visma-ordning
+      r40 ? u(7610, r40) : '',
+      r41 ? u(7713, r41) : '',
+
+      // Pension & SLP
+      j.r24 ? u(7760, Math.round(j.r24||0)) : '',
+      (s3.dSLP||0) > 0 ? u(7762, s3.dSLP||0) : '',
+
+      // Slutresultat
+      ...(r47 > 0 ? [
+        // Överskott
+        u(8046, 'X'),
+        u(8000, 'X'),
+        ega.sum   ? u(8009, Math.abs(ega.sum))   : '',
+        ega.ned   ? u(8011, Math.abs(ega.ned))   : '',
+        u(8012, Math.abs(ega.avd25)),
+        u(7630, r47),
+      ] : [
+        // Underskott — Visma: 7730 = underskottsbelopp, 8012 = samma, 7601 = kvarstående
+        u(7730, Math.abs(r47)),  // Underskott av aktiv näring → INK1 10.2
+        u(8012, Math.abs(r47)),  // Samma belopp
+        // 7601 = kvarstående outnyttjat underskott (0 om allt utnyttjas)
+      ]),
+
       '#SYSTEMINFO SkattAI/Normiq',
       '#BLANKETTSLUT',
     ].filter(r => r !== '').join('\n')
@@ -1236,11 +1248,29 @@ export default function DeklaraPage() {
         {step === 5 && (
           <div style={{ maxWidth: 780, padding: '32px 36px 60px' }}>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav(4)}>← TILLBAKA</div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>Egenavgifter & skatteuträkning</h1>
-            <div style={{ fontSize: 13, color: '#6A6660', marginBottom: 20 }}>25%-avdraget justeras mot faktiska avgifter nästa år via NE §G — kom ihåg kopplingen.</div>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>
+              {skattemassigt < 0 ? 'Underskott av aktiv näring' : 'Egenavgifter & skatteuträkning'}
+            </h1>
+            {skattemassigt < 0 ? (
+              <div style={{ background: '#FDF0EE', border: '2px solid #C0392B', borderRadius: 4, padding: '16px 18px', marginBottom: 20 }}>
+                <div style={{ fontWeight: 600, color: '#C0392B', marginBottom: 6, fontSize: 14 }}>
+                  ⚠ Underskott av aktiv näring: {fmt(Math.abs(skattemassigt))} kr
+                </div>
+                <div style={{ fontSize: 13, color: '#6A3020', lineHeight: 1.65 }}>
+                  Skattemässigt underskott förs till <strong>INK1 ruta 10.2</strong> och rullas vidare.
+                  Ingen kommunalskatt eller egenavgifter beräknas. Underskottet kan kvittas mot
+                  överskott kommande år, eller mot tjänsteinkomst (70%) de första 5 åren.
+                </div>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#C0392B', marginTop: 10, padding: '8px 12px', background: 'rgba(192,57,43,.06)', borderLeft: '2px solid #C0392B' }}>
+                  SRU: #UPPGIFT 7730 {Math.abs(skattemassigt)} → INK1 #UPPGIFT 1202 {Math.abs(skattemassigt)}
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: '#6A6660', marginBottom: 20 }}>25%-avdraget justeras mot faktiska avgifter nästa år via NE §G — kom ihåg kopplingen.</div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
-              {[{ l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' }, { l: 'Egenavgifter', v: fmt(ega.sum) + ' kr', c: '#C0392B' }, { l: 'Nedsättning', v: '−' + fmt(ega.ned) + ' kr', c: '#2D6A4F' }, { l: '25%-avdrag', v: '−' + fmt(ega.avd25) + ' kr', c: '#2D6A4F' }, { l: 'Total skatt', v: fmt(ega.tot) + ' kr', c: '#C0392B' }].map(s => (
+              {[{ l: skattemassigt >= 0 ? 'Skattemässigt överskott' : 'Skattemässigt underskott', v: fmt(Math.abs(skattemassigt)) + ' kr', c: skattemassigt < 0 ? '#C0392B' : undefined }, { l: 'Egenavgifter', v: fmt(ega.sum) + ' kr', c: '#C0392B' }, { l: 'Nedsättning', v: '−' + fmt(ega.ned) + ' kr', c: '#2D6A4F' }, { l: '25%-avdrag', v: '−' + fmt(ega.avd25) + ' kr', c: '#2D6A4F' }, { l: 'Total skatt', v: fmt(ega.tot) + ' kr', c: '#C0392B' }].map(s => (
                 <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
                   <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700, color: (s as {l:string;v:string;c?:string}).c || '#1A1A18' }}>{s.v}</div>
@@ -1317,7 +1347,7 @@ export default function DeklaraPage() {
             {/* 25%-avdraget */}
             <Accordion code="EGA §4" name="25%-avdraget — beräknade egenavgifter" sum={'−' + fmt(ega.avd25) + ' kr'}>
               <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>25% × (överskott − netto-EGA). Justeras mot faktiska avgifter nästa år via NE §G (R28–R30).</div>
-              {[{ id: 'E4', label: 'Underlag för 25%-avdraget', val: fmt(skattemassigt - ega.netto), hint: 'Skattemässigt − netto-EGA · Auto', sie: false, calc: true }, { id: 'E5', label: 'Avdrag beräknade egenavgifter (25% × E4)', val: fmt(ega.avd25), hint: '→ Justeras på nästa års NE §G', sie: true, calc: true }, { id: 'E6', label: 'Slutligt skattemässigt överskott av aktiv näring', val: fmt(ega.slutlig), hint: '', sie: false, calc: false, result: true }].map(f => (
+              {[{ id: 'E4', label: 'Underlag för 25%-avdraget', val: fmt(skattemassigt - ega.netto), hint: 'Skattemässigt − netto-EGA · Auto', sie: false, calc: true }, { id: 'E5', label: 'Avdrag beräknade egenavgifter (25% × E4)', val: fmt(ega.avd25), hint: '→ Justeras på nästa års NE §G', sie: true, calc: true }, { id: 'E6', label: skattemassigt >= 0 ? 'Slutligt överskott av aktiv näring → INK1 ruta 10.1' : 'Underskott av aktiv näring → INK1 ruta 10.2', val: fmt(Math.abs(ega.slutlig)), hint: '', sie: false, calc: false, result: true }].map(f => (
                 <div key={f.id} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>{f.id}</span>
                   <div><div style={{ fontSize: 13, color: '#3A3832' }}>{f.label}</div>{f.hint && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>{f.hint}</div>}</div>
@@ -1385,7 +1415,7 @@ export default function DeklaraPage() {
             <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 16 }}>Granska & exportera</h1>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
-              {[{ l: 'Överskott av näring', v: fmt(ega.slutlig) + ' kr' }, { l: 'Egenavgifter', v: fmt(ega.netto) + ' kr', c: '#C0392B' }, { l: 'Kommunalskatt', v: fmt(ega.kom) + ' kr', c: '#C0392B' }, { l: 'Total skatt & avg.', v: fmt(ega.tot) + ' kr', c: '#C0392B' }].map(s => (
+              {[{ l: ega.slutlig >= 0 ? 'Överskott av näring' : 'Underskott av näring', v: fmt(Math.abs(ega.slutlig)) + ' kr', c: ega.slutlig < 0 ? '#C0392B' : undefined }, { l: 'Egenavgifter', v: fmt(ega.netto) + ' kr', c: '#C0392B' }, { l: 'Kommunalskatt', v: fmt(ega.kom) + ' kr', c: '#C0392B' }, { l: 'Total skatt & avg.', v: fmt(ega.tot) + ' kr', c: '#C0392B' }].map(s => (
                 <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
                   <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700, color: (s as {l:string;v:string;c?:string}).c || '#1A1A18' }}>{s.v}</div>
