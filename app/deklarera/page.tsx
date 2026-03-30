@@ -174,11 +174,20 @@ function mapSIE(sie: SIEData): MappingData {
   const int = (fields.R1?.value || 0) + (fields.R2?.value || 0) + (fields.R3?.value || 0)
   const kst = ['R10','R11','R12','R13','R14','R15','R16','R17'].reduce((s, id) => s + (fields[id]?.value || 0), 0)
   const bokf = int - kst
+  // Auto-detect ej avdragsgilla kostnader
+  const ejAvdragsgillRepresentation = Math.round(Math.abs(sie.accountTotals['6072'] || 0))
+  const ejAvdragsgillaBoter = Math.round(Math.abs((sie.accountTotals['6993'] || 0) + (sie.accountTotals['6991'] || 0)))
+  const ejAvdragsgillaBankavg = Math.round(Math.abs(sie.accountTotals['6570'] || 0))
+  const autoR31 = ejAvdragsgillRepresentation   // representation ej avdragsgill → R31
+  const autoR32 = ejAvdragsgillaBoter           // böter/skattetillägg → R32
+
   const flags: NEFlag[] = []
-  if ((sie.accountTotals['6570'] || 0) > 100)
+  if (ejAvdragsgillaBankavg > 100)
     flags.push({ sev: 'warn', msg: '6570 Bankavgifter', detail: 'Kontrollera om privata kortavgifter ingår.' })
-  if ((sie.accountTotals['6993'] || 0) > 0)
-    flags.push({ sev: 'err', msg: '6993 Böter/skattetillägg — EJ avdragsgilla', detail: 'IL 9:10. Återför i §H R32.' })
+  if (ejAvdragsgillaBoter > 0)
+    flags.push({ sev: 'err', msg: `6993/6991 Böter/skattetillägg ${ejAvdragsgillaBoter.toLocaleString('sv-SE')} kr — EJ avdragsgilla`, detail: 'IL 9:10. Auto-justerat i §H R32.' })
+  if (ejAvdragsgillRepresentation > 0)
+    flags.push({ sev: 'warn', msg: `6072 Representation ej avdragsgill ${ejAvdragsgillRepresentation.toLocaleString('sv-SE')} kr`, detail: 'Auto-justerat i §H R31. Kontrollera beloppet.' })
   if ((fields.R14?.value || 0) === 0)
     flags.push({ sev: 'info', msg: 'Inga resekostnader registrerade', detail: 'Har du haft tjänsteresor? Traktamente kan tillkomma.' })
   const avskr = Math.round(Math.abs((sie.accountTotals['7810'] || 0) + (sie.accountTotals['7820'] || 0) + (sie.accountTotals['7830'] || 0)))
@@ -192,7 +201,7 @@ function mapSIE(sie: SIEData): MappingData {
   // Negativ summa = positivt EK (kreditkonton). Positiva inslag (uttag 2013) minskar EK.
   const kapitalunderlag = Math.round(-ibEK2xxx)
   const ekRaw = Object.entries(sie.accountTotals).filter(([a]) => a >= '2000' && a <= '2099').reduce((s, [, v]) => s + v, 0)
-  return { fields, int: Math.round(int), kst: Math.round(kst), bokf: Math.round(bokf), flags, avskr, kapital: kapitalunderlag }
+  return { fields, int: Math.round(int), kst: Math.round(kst), bokf: Math.round(bokf), flags, avskr, kapital: kapitalunderlag, autoR31, autoR32 }
 }
 
 function buildBS(sie: SIEData): BSData {
@@ -352,6 +361,11 @@ export default function DeklaraPage() {
   const setAv = (k: string, v: 'ja' | 'nej') => setAvstamning(prev => ({ ...prev, [k]: v }))
   const avstamningKlar = Object.values(avstamning).every(v => v !== null)
 
+  // Deklarationsuppgifter
+  const [verksamhetensArt, setVerksamhetensArt] = useState<string>('')
+  const [uppdragstagare, setUppdragstagare] = useState<boolean>(false)
+  const [saknarTillgangar, setSaknarTillgangar] = useState<boolean>(false)
+
   // Skattesatser
   const [kommunalskatt, setKommunalskatt] = useState<number>(32.0)  // schabloon, justerbar
 
@@ -405,7 +419,12 @@ export default function DeklaraPage() {
         setJ(prev => ({
           ...prev,
           r5: m.avskr, r6: m.avskr, r17: m.kapital,
+          r31: m.autoR31 || 0,
+          r32: m.autoR32 || 0,
         }))
+        // Auto-set saknarTillgangar om inga 1xxx-konton i SIE
+        const hasAssets = Object.keys(b.al).length > 0 || b.al.length > 0
+        setSaknarTillgangar(!hasAssets)
       }
       steps[i] = 'done'
       setParseSteps([...steps])
@@ -548,6 +567,8 @@ export default function DeklaraPage() {
       u(7011, sieData?.fiscalYearStart || '20250101'),
       u(7012, sieData?.fiscalYearEnd   || '20251231'),
       u(7023, 'X'),  // Aktiv näring
+      verksamhetensArt ? u(7020, verksamhetensArt) : '',  // Verksamhetens art
+      uppdragstagare ? u(7050, 'X') : '',  // Uppdragstagare biträtt
 
       // Intäkter (bevarar tecken — negativ intäkt är OK)
       u(7400, fv('R1')),
@@ -558,6 +579,8 @@ export default function DeklaraPage() {
       sumKost ? u(7501, sumKost) : '',
 
       // Bokfört resultat — negativt = underskott, Visma skickar med negativt tecken
+      // Tillgångar — om inga tillgångar, kryssa i B1
+      saknarTillgangar ? u(7100, 'X') : '',  // Verksamheten saknar tillgångar och skulder
       u(7440, bokfOvsk),
       u(7600, bokfOvsk),
 
@@ -1050,7 +1073,7 @@ export default function DeklaraPage() {
 
             {/* Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
-              {[{ l: 'Bokfört', v: fmt(bokf) + ' kr' }, { l: 'Avskr.', v: sgn(s3.dA) }, { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + (j.useRF ? s3.dD : 0)) }, { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH + (s3.dI||0) + (s3.dJ||0)) }, { l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' }].map(s => (
+              {[{ l: 'Bokfört', v: fmt(bokf) + ' kr' }, { l: 'Avskr.', v: sgn(s3.dA) }, { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + (j.useRF ? s3.dD : 0)) }, { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH + (s3.dI||0) + (s3.dJ||0)) }, { l: skattemassigt >= 0 ? 'Skattemässigt' : 'Underskott', v: fmt(Math.abs(skattemassigt)) + ' kr', c: skattemassigt < 0 ? '#C0392B' : undefined }].map(s => (
                 <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
                   <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700 }}>{s.v}</div>
@@ -1067,7 +1090,7 @@ export default function DeklaraPage() {
               { code: 'NE §E', name: 'Outnyttjat underskott', sum: sgn(s3.dE), info: { type: 'amber', text: 'Rullas vidare utan tidsgräns. Kan kvittas mot tjänst (70%) de första 5 åren.' }, fields: [{ id: 'r21', label: 'Outnyttjat underskott från föregående år', hint: '' }, { id: 'r22', label: 'Utnyttjat underskott i år', hint: 'Auto — max årets överskott', calc: true }, { id: 'r23', label: 'Kvarstående (rullas vidare)', hint: 'Auto', calc: true }] },
               { code: 'NE §F', name: 'Pension, sjuklön & sjukpenning', sum: sgn(s3.dF), info: { type: 'blue', text: 'Tjänstepension max 35% av överskott (tak 573 000 kr) · IL 28:5.' }, fields: [{ id: 'r24', label: 'Avdrag för pensionssparande / tjänstepension', hint: 'Max 35% · IL 28:5' }, { id: 'r25', label: 'Sjukpenning / föräldrapenning (intäkt)', hint: '' }, { id: 'r26', label: 'Betald sjuklön till anställda', hint: '', sie: true }, { id: 'r27', label: 'Erhållen sjuklöneersättning från FK (intäkt)', hint: '' }] },
               { code: 'NE §G', name: '⚠ Egenavgifter föregående år — medgivna / påförda', sum: sgn(s3.dG), info: { type: 'amber', text: '⚠ Viktig rad som de flesta missar! Medgivna (R28) = vad du drog av på förra årets NE. Påförda (R29) = faktiska avgifter från slutskattebeskedet. Differensen justeras här.' }, fields: [{ id: 'r28', label: 'Avdrag medgivna egenavgifter föregående år', hint: 'Beloppet du drog av på förra NE · Från förra årets NE §4 E5', highlight: true }, { id: 'r29', label: 'Faktiskt påförda egenavgifter föregående år', hint: 'Från Skatteverkets slutskattebesked · Se R41 på NE-bilagan', highlight: true }, { id: 'r30', label: 'Justering (R28 − R29)', hint: 'Pos = drog av för mycket → återförs (ökar överskott) · Neg = extra avdrag · Auto', calc: true }] },
-              { code: 'NE §H', name: 'Övriga justeringar', sum: sgn(s3.dH), info: null, fields: [{ id: 'r31', label: 'Representation — ej avdragsgill del', hint: 'Max 180 kr exkl. moms / person' }, { id: 'r32', label: 'Böter och skattetillägg (IL 9:10)', hint: 'Aldrig avdragsgilla' }, { id: 'r33', label: 'Schablonintäkt (ISK / räntefond i rörelsen)', hint: '' }, { id: 'r34', label: 'Övriga skattemässiga tillägg', hint: '' }, { id: 'r35', label: 'Övriga skattemässiga avdrag', hint: '' }] },
+              { code: 'NE §H', name: 'Övriga justeringar', sum: sgn(s3.dH), info: null, fields: [{ id: 'r31', label: 'Representation — ej avdragsgill del (6072)', hint: 'Auto från SIE · Max 180 kr exkl. moms / person', sie: (mapping?.autoR31||0) > 0 }, { id: 'r32', label: 'Böter och skattetillägg (IL 9:10)', hint: 'Auto från SIE · Aldrig avdragsgilla', sie: (mapping?.autoR32||0) > 0 }, { id: 'r33', label: 'Schablonintäkt (ISK / räntefond i rörelsen)', hint: '' }, { id: 'r34', label: 'Övriga skattemässiga tillägg', hint: '' }, { id: 'r35', label: 'Övriga skattemässiga avdrag', hint: '' }] },
             ].map(acc => (
               <Accordion key={acc.code} code={acc.code} name={acc.name} sum={acc.sum}>
                 {acc.info && (
@@ -1198,12 +1221,16 @@ export default function DeklaraPage() {
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500 }}>{row.v}</span>
                 </div>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#EDE8DF', borderTop: '2px solid #C8C3BA' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: skattemassigt < 0 ? '#FDF0EE' : '#EDE8DF', borderTop: '2px solid #C8C3BA' }}>
                 <div>
-                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700 }}>Skattemässigt överskott (beräknat)</div>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto — summa av alla justeringar ovan</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700, color: skattemassigt < 0 ? '#C0392B' : '#1A1A18' }}>
+                    {skattemassigt >= 0 ? 'Skattemässigt överskott' : 'Skattemässigt underskott → INK1 ruta 10.2'}
+                  </div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: skattemassigt < 0 ? '#C0392B' : '#9A9690', marginTop: 2 }}>
+                    {skattemassigt < 0 ? 'Ingen EGA eller 25%-avdrag — underskottet rullas vidare' : 'Auto — summa av alla justeringar ovan'}
+                  </div>
                 </div>
-                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700 }}>{fmt(skattemassigt)} kr</span>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: skattemassigt < 0 ? '#C0392B' : '#1A1A18' }}>{fmt(Math.abs(skattemassigt))} kr</span>
               </div>
               {/* Manual override */}
               <div style={{ padding: '12px 14px', background: '#FDF5E6', borderTop: '1px solid #E8D4A0' }}>
@@ -1421,6 +1448,48 @@ export default function DeklaraPage() {
                   <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700, color: (s as {l:string;v:string;c?:string}).c || '#1A1A18' }}>{s.v}</div>
                 </div>
               ))}
+            </div>
+
+            {/* Deklarationsuppgifter */}
+            <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, marginBottom: 18, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 14px', background: '#EDE8DF', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690' }}>Uppgifter om verksamheten</span>
+              </div>
+
+              {/* Verksamhetens art */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 12, padding: '11px 14px', borderBottom: '1px solid #DDD8CF', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>Verksamhetens art (7020) <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', background: '#FDF0EE', border: '1px solid #E8C4BF', padding: '1px 6px', marginLeft: 6 }}>OBLIGATORISK</span></div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>T.ex. "Artistisk verksamhet", "Konsulttjänster", "Handel"</div>
+                </div>
+                <input
+                  type="text"
+                  value={verksamhetensArt}
+                  onChange={e => setVerksamhetensArt(e.target.value)}
+                  placeholder="Ange verksamhetens art..."
+                  style={{ fontFamily: 'inherit', fontSize: 13, padding: '7px 10px', background: verksamhetensArt ? '#EFF7F2' : '#FDF0EE', border: `1px solid ${verksamhetensArt ? '#B7D9C8' : '#E8C4BF'}`, color: '#1A1A18', outline: 'none', borderRadius: 2, width: '100%' }}
+                />
+              </div>
+
+              {/* Uppdragstagare */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderBottom: '1px solid #DDD8CF', cursor: 'pointer' }} onClick={() => setUppdragstagare(v => !v)}>
+                <input type="checkbox" checked={uppdragstagare} onChange={e => setUppdragstagare(e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                <div>
+                  <div style={{ fontSize: 13 }}>Uppdragstagare (t.ex. redovisningskonsult) har biträtt vid upprättandet</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>SRU: #UPPGIFT 7050 X</div>
+                </div>
+              </div>
+
+              {/* Saknar tillgångar */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', cursor: 'pointer', background: saknarTillgangar ? '#FDF5E6' : 'transparent' }} onClick={() => setSaknarTillgangar(v => !v)}>
+                <input type="checkbox" checked={saknarTillgangar} onChange={e => setSaknarTillgangar(e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
+                <div>
+                  <div style={{ fontSize: 13 }}>Verksamheten saknar tillgångar och skulder (B1)</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>
+                    {saknarTillgangar ? '⚠ Kryssad in — SRU: #UPPGIFT 7100 X' : 'Auto-detekterat från balansräkning — ändra vid behov'}
+                  </div>
+                </div>
+              </div>
             </div>
 
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9A9690', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
