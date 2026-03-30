@@ -210,7 +210,8 @@ function calcStep3(base: number, vals: Record<string, number>) {
   const dD = g('r20') - g('r19')
   const dE = -Math.min(g('r21'), Math.max(0, base))
   const dF = g('r25') + g('r27') - g('r24') - g('r26')
-  const dG = -(g('r28') - g('r29'))
+  // §G: medgivna (r28) - påförda (r29). Positiv = drog av för mycket = återföring (ökar överskott). Negativ = extra avdrag.
+  const dG = g('r28') - g('r29')
   const dH = g('r31') + g('r32') + g('r33') + g('r34') - g('r35')
   // §I Resor & traktamente (ej bokförda)
   const dI = -(g('resor_mil') * 25 + g('resor_trakt') * 290)
@@ -335,7 +336,7 @@ export default function DeklaraPage() {
   // Derived values
   const bokf = mapping?.bokf || 0
   const s3 = calcStep3(bokf, j)
-  const skattemassigt = s3.tot
+  const skattemassigt = j.useManual ? (j.manualOverskott || 0) : s3.tot
   const ega = calcEga(skattemassigt, passiv, extraNed)
 
   // Parse flow
@@ -756,7 +757,7 @@ export default function DeklaraPage() {
               { code: 'NE §D', name: 'Räntefördelning', sum: sgn(s3.dD), info: { type: 'blue', text: 'Omvandlar näringsinkomst till kapital (30%). Ränta 6,49% × kapitalunderlag.' }, fields: [{ id: 'r17', label: 'Kapitalunderlag (ingående justerat EK)', hint: 'Auto från balansräkning', sie: true }, { id: 'r18', label: 'Max positiv räntefördelning (6,49% × R17)', hint: 'Auto', calc: true }, { id: 'r19', label: 'Positiv räntefördelning (frivillig)', hint: 'Max R18 · Kapitalinkomst 30%' }, { id: 'r20', label: 'Negativ räntefördelning (obligatorisk)', hint: '' }] },
               { code: 'NE §E', name: 'Outnyttjat underskott', sum: sgn(s3.dE), info: { type: 'amber', text: 'Rullas vidare utan tidsgräns. Kan kvittas mot tjänst (70%) de första 5 åren.' }, fields: [{ id: 'r21', label: 'Outnyttjat underskott från föregående år', hint: '' }, { id: 'r22', label: 'Utnyttjat underskott i år', hint: 'Auto — max årets överskott', calc: true }, { id: 'r23', label: 'Kvarstående (rullas vidare)', hint: 'Auto', calc: true }] },
               { code: 'NE §F', name: 'Pension, sjuklön & sjukpenning', sum: sgn(s3.dF), info: { type: 'blue', text: 'Tjänstepension max 35% av överskott (tak 573 000 kr) · IL 28:5.' }, fields: [{ id: 'r24', label: 'Avdrag för pensionssparande / tjänstepension', hint: 'Max 35% · IL 28:5' }, { id: 'r25', label: 'Sjukpenning / föräldrapenning (intäkt)', hint: '' }, { id: 'r26', label: 'Betald sjuklön till anställda', hint: '', sie: true }, { id: 'r27', label: 'Erhållen sjuklöneersättning från FK (intäkt)', hint: '' }] },
-              { code: 'NE §G', name: 'Egenavgifter föregående år — medgivna / påförda', sum: sgn(s3.dG), info: { type: 'blue', text: 'Föregående års 25%-avdrag (medgivna) vs. faktiska avgifter (påförda). Raden de flesta missar.' }, fields: [{ id: 'r28', label: 'Avdrag medgivna egenavgifter föregående år', hint: 'Beloppet du drog av på förra NE' }, { id: 'r29', label: 'Faktiskt påförda egenavgifter föregående år', hint: 'Från slutskattebesked' }, { id: 'r30', label: 'Justering (R28 − R29)', hint: 'Pos = återföring · Neg = extra avdrag · Auto', calc: true }] },
+              { code: 'NE §G', name: 'Egenavgifter föregående år — medgivna / påförda', sum: sgn(s3.dG), info: { type: 'blue', text: 'Föregående års 25%-avdrag (medgivna) vs. faktiska avgifter (påförda). Raden de flesta missar.' }, fields: [{ id: 'r28', label: 'Avdrag medgivna egenavgifter föregående år', hint: 'Beloppet du drog av på förra NE' }, { id: 'r29', label: 'Faktiskt påförda egenavgifter föregående år', hint: 'Från slutskattebesked' }, { id: 'r30', label: 'Justering (R28 − R29)', hint: 'Pos = drog av för mycket → återförs (ökar överskott) · Neg = extra avdrag · Auto', calc: true }] },
               { code: 'NE §H', name: 'Övriga justeringar', sum: sgn(s3.dH), info: null, fields: [{ id: 'r31', label: 'Representation — ej avdragsgill del', hint: 'Max 180 kr exkl. moms / person' }, { id: 'r32', label: 'Böter och skattetillägg (IL 9:10)', hint: 'Aldrig avdragsgilla' }, { id: 'r33', label: 'Schablonintäkt (ISK / räntefond i rörelsen)', hint: '' }, { id: 'r34', label: 'Övriga skattemässiga tillägg', hint: '' }, { id: 'r35', label: 'Övriga skattemässiga avdrag', hint: '' }] },
             ].map(acc => (
               <Accordion key={acc.code} code={acc.code} name={acc.name} sum={acc.sum}>
@@ -838,9 +839,38 @@ export default function DeklaraPage() {
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500 }}>{row.v}</span>
                 </div>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#EDE8DF', borderTop: '2px solid #C8C3BA' }}>
-                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700 }}>Skattemässigt överskott</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: '#EDE8DF', borderTop: '2px solid #C8C3BA' }}>
+                <div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700 }}>Skattemässigt överskott (beräknat)</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto — summa av alla justeringar ovan</div>
+                </div>
                 <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700 }}>{fmt(skattemassigt)} kr</span>
+              </div>
+              {/* Manual override */}
+              <div style={{ padding: '12px 14px', background: '#FDF5E6', borderTop: '1px solid #E8D4A0' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                  <input
+                    type="checkbox"
+                    id="useManual"
+                    checked={!!j.useManual}
+                    onChange={e => setJv('useManual', e.target.checked ? 1 : 0)}
+                    style={{ cursor: 'pointer', width: 14, height: 14 }}
+                  />
+                  <label htmlFor="useManual" style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#92620A', cursor: 'pointer', letterSpacing: '.04em' }}>
+                    Ange skattemässigt överskott manuellt (åsidosätter beräkningen)
+                  </label>
+                </div>
+                {!!j.useManual && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 148px', gap: 10, alignItems: 'center' }}>
+                    <div style={{ fontSize: 13, color: '#92620A' }}>Manuellt skattemässigt överskott</div>
+                    <input
+                      type="number"
+                      value={j.manualOverskott || 0}
+                      onChange={e => setJv('manualOverskott', parseInt(e.target.value) || 0)}
+                      style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, fontWeight: 700, padding: '7px 10px', background: '#fff', border: '2px solid #E8D4A0', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }}
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
