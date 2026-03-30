@@ -424,28 +424,115 @@ export default function DeklaraPage() {
   function generateSRU() {
     const f = mapping?.fields || {}
     const fv = (id: string) => Math.round(f[id]?.value || 0)
-    const row = (n: number, v: number, c: string) =>
-      v ? `#UPPGIFT ${n} ${v}       ; ${c}` : `;#UPPGIFT ${n} 0       ; ${c}`
-    return [
-      '#BLANKETT NE',
-      `#IDENTITET ${sieData?.orgNumber || '—'} ${sieData?.fiscalYearStart || ''} ${sieData?.fiscalYearEnd || ''} 1`,
-      '', row(1,fv('R1'),'R1'), row(2,fv('R2'),'R2'), row(3,fv('R3'),'R3'),
-      '', row(10,fv('R10'),'R10'), row(11,fv('R11'),'R11'), row(12,fv('R12'),'R12'),
-      row(13,fv('R13'),'R13'), row(14,fv('R14'),'R14'), row(15,fv('R15'),'R15'), row(16,fv('R16'),'R16'),
-      '', row(20,j.r5||0,'R5'), row(21,j.r6||0,'R6'), row(30,j.r10||0,'PF'),
-      row(40,j.r14||0,'EF'), row(50,j.r19||0,'RF'), row(55,j.r24||0,'Pension'),
-      '', row(60,ega.netto,'EGA'), row(61,ega.avd25,'25%-avdrag'),
-      '', row(99,ega.slutlig,'Slutligt överskott'),
-      '', '#BLANKETTSLUT', '#FIL',
-    ].join('\n')
+    
+    // Personnr utan bindestreck och med sekelsiffra (19XX eller 20XX)
+    const rawOrg = sieData?.orgNumber || ''
+    const orgClean = rawOrg.replace(/-/g, '')
+    // Lägg till sekelsiffra om den saknas (8 siffror → 10 siffror)
+    const orgFull = orgClean.length === 8 ? (parseInt(orgClean.substring(0,2)) > 20 ? '19' : '20') + orgClean : orgClean
+    
+    // Framställningsdatum och tid (idag)
+    const now = new Date()
+    const dateFmt = now.getFullYear().toString() +
+      String(now.getMonth()+1).padStart(2,'0') +
+      String(now.getDate()).padStart(2,'0')
+    const timeFmt = String(now.getHours()).padStart(2,'0') +
+      String(now.getMinutes()).padStart(2,'0') +
+      String(now.getSeconds()).padStart(2,'0')
+    
+    // Beräknade värden
+    const sumKost = fv('R10')+fv('R11')+fv('R12')+fv('R13')+fv('R14')+fv('R15')+fv('R16')+fv('R17')
+    const bokfOvsk = fv('R1')+fv('R2')+fv('R3') - sumKost
+    
+    // Justeringar
+    const r16hk = Math.round((j.hemmakontor||0) + (j.hemmakontor_internet||0))  // R16 hemmakontor
+    const trakt = (j.resor_trakt_manuell||0) > 0 ? (j.resor_trakt_manuell||0) : (j.resor_trakt||0)*290
+    const r22res = Math.round((j.resor_mil||0)*25 + trakt)  // R22 resor
+    const r40 = Math.round(j.r28||0)  // Medgivna EGA föregående år
+    const r41 = Math.round(j.r29||0)  // Påförda EGA föregående år
+    
+    // R47 slutligt överskott
+    const r47 = ega.slutlig
+    
+    const u = (kod: number, v: number | string) => `#UPPGIFT ${kod} ${v}`
+    
+    // BLANKETTER.SRU
+    const blanketter = [
+      `#BLANKETT NE-2025P4`,
+      `#IDENTITET ${orgFull} ${dateFmt} ${timeFmt}`,
+      sieData?.companyName ? `#NAMN ${sieData.companyName}` : '',
+      '',
+      '; ── Räkenskapsår ──────────────────────────',
+      u(7011, sieData?.fiscalYearStart || '20250101'),
+      u(7012, sieData?.fiscalYearEnd || '20251231'),
+      u(7023, 'X'),  // Aktiv näring
+      '',
+      '; ── Intäkter ──────────────────────────────',
+      fv('R1') ? u(7400, fv('R1')) : '',   // R1 Nettoomsättning
+      fv('R2') ? u(7410, fv('R2')) : '',   // R2 Övriga rörelseintäkter
+      '',
+      '; ── Kostnader ─────────────────────────────',
+      sumKost ? u(7501, sumKost) : '',     // Summa kostnader
+      fv('R13') ? u(7300, fv('R13')) : '', // R13 Lokalkostnader
+      fv('R14') ? u(7280, fv('R14')) : '', // R14 Resekostnader
+      fv('R15') ? u(7290, fv('R15')) : '', // R15 Övriga externa
+      '',
+      '; ── Bokfört överskott ─────────────────────',
+      bokfOvsk ? u(7440, bokfOvsk) : '',
+      bokfOvsk ? u(7600, bokfOvsk) : '',
+      '',
+      '; ── Skattemässiga justeringar ─────────────',
+      r16hk ? u(7701, r16hk) : '',         // R16 hemmakontor
+      r22res ? u(7704, r22res) : '',        // R22 resor/traktamente
+      j.r10 ? u(7730, Math.round(j.r10||0)) : '',  // Periodiseringsfond
+      r40 ? u(7713, r40) : '',              // R40 Medgivna EGA föregående år
+      r41 ? u(7714, r41) : '',              // R41 Påförda EGA föregående år
+      '',
+      '; ── Egenavgifter ──────────────────────────',
+      u(8046, 'X'),                         // Beräkna egenavgifter
+      u(8000, 'X'),                         // Maximalt avdrag
+      ega.sum ? u(8009, ega.sum) : '',      // Beräknade egenavgifter brutto
+      ega.ned ? u(8011, ega.ned) : '',      // Nedsättning
+      ega.avd25 ? u(8012, ega.avd25) : '',  // 25%-avdraget
+      '',
+      '; ── Slutresultat ──────────────────────────',
+      u(7630, r47),                         // R47 Slutligt överskott → INK1 ruta 10.1
+      '',
+      '#SYSTEMINFO SkattAI/Normiq',
+      '#BLANKETTSLUT',
+    ].filter(r => r !== '').join('\n')
+    
+    // INFO.SRU
+    const info = [
+      '#DATABESKRIVNING_START',
+      '#PRODUKT SRU',
+      `#SKAPAD ${dateFmt} ${timeFmt}`,
+      '#PROGRAM SkattAI/Normiq 1.0',
+      '#FILNAMN BLANKETTER.SRU',
+      '#DATABESKRIVNING_SLUT',
+      '#MEDIELEV_START',
+      `#ORGNR ${orgFull}`,
+      sieData?.companyName ? `#NAMN ${sieData.companyName}` : '',
+      '#MEDIELEV_SLUT',
+    ].filter(r => r !== '').join('\n')
+    
+    return { blanketter: blanketter + '\n#FIL_SLUT', info }
   }
 
   function downloadSRU() {
-    const blob = new Blob([generateSRU()], { type: 'text/plain;charset=utf-8' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = 'NE_2024.sru'
-    a.click()
+    const { blanketter, info } = generateSRU()
+    // Download BLANKETTER.SRU
+    const a1 = document.createElement('a')
+    a1.href = URL.createObjectURL(new Blob([blanketter], { type: 'text/plain;charset=windows-1252' }))
+    a1.download = 'BLANKETTER.SRU'
+    a1.click()
+    // Download INFO.SRU after short delay
+    setTimeout(() => {
+      const a2 = document.createElement('a')
+      a2.href = URL.createObjectURL(new Blob([info], { type: 'text/plain;charset=windows-1252' }))
+      a2.download = 'INFO.SRU'
+      a2.click()
+    }, 500)
   }
 
   const nav = (n: number) => {
@@ -1087,7 +1174,7 @@ export default function DeklaraPage() {
               <span>SRU-förhandsvisning</span><div style={{ flex: 1, height: 1, background: '#DDD8CF' }} />
             </div>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, padding: '16px 18px', marginBottom: 18, whiteSpace: 'pre', overflowX: 'auto', lineHeight: 1.9, color: '#6A6660' }}>
-              {generateSRU()}
+              {generateSRU().blanketter}
             </div>
 
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9A9690', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -1110,7 +1197,7 @@ export default function DeklaraPage() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button onClick={downloadSRU} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>↓ Ladda ner SRU-fil</button>
+              <button onClick={downloadSRU} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>↓ Ladda ner BLANKETTER.SRU + INFO.SRU</button>
               <button onClick={() => openDrawer('Finns det något sista jag bör kontrollera innan jag lämnar in deklarationen?')} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Sista granskning med Normiq</button>
             </div>
             <div style={{ marginTop: 24, padding: '10px 14px', background: '#FDF5E6', border: '1px solid #E8D4A0', borderRadius: 2, fontSize: 12, color: '#92620A', lineHeight: 1.65 }}>
