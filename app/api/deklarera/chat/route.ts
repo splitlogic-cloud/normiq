@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
+
+// Auth is handled by middleware.ts — /deklarera requires login
+// Add Stripe plan check here later when ready
 
 const SYSTEM = `Du är en erfaren svensk skatteexpert och redovisningskonsult med djup kunskap om:
 - Blankett NE, N3A, INK2 (taxeringsår 2025, inkomstår 2024)
@@ -20,30 +22,6 @@ Regler:
 - Hänvisa till IL §§ vid regelbaserade påståenden`
 
 export async function POST(req: NextRequest) {
-  // Auth check — must be logged in
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  // Optional: Stripe plan check
-  // Uncomment and adapt to your actual subscription table/column
-  /*
-  const { data: subscription } = await supabase
-    .from('subscriptions')
-    .select('status, plan')
-    .eq('user_id', user.id)
-    .single()
-
-  if (!subscription || subscription.status !== 'active') {
-    return NextResponse.json(
-      { error: 'Deklarera kräver ett aktivt Normiq-abonnemang' },
-      { status: 403 }
-    )
-  }
-  */
-
   try {
     const { messages } = await req.json()
 

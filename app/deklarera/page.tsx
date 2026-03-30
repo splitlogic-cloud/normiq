@@ -1,8 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
 
 // ─── Types ───────────────────────────────────
 interface SIEData {
@@ -272,7 +270,6 @@ const DEMO_SIE = `#FLAGGA 0
 
 // ─── Main Component ───────────────────────────
 export default function DeklaraPage() {
-  const router = useRouter()
   const [step, setStep] = useState<Step>(1)
   const [sieData, setSieData] = useState<SIEData | null>(null)
   const [mapping, setMapping] = useState<MappingData | null>(null)
@@ -298,13 +295,7 @@ export default function DeklaraPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Auth check
-  useEffect(() => {
-    const supabase = createClient()
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) router.push('/login?redirect=/deklarera')
-    })
-  }, [router])
+  // Auth is handled by middleware.ts — no client-side check needed
 
   // Scroll drawer
   useEffect(() => {
