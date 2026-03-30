@@ -1040,7 +1040,7 @@ export default function DeklaraPage() {
             </div>
 
             {/* Summary */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)'}}, gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
               {[{ l: 'Bokfört', v: fmt(bokf) + ' kr' }, { l: 'Avskr.', v: sgn(s3.dA) }, { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + (j.useRF ? s3.dD : 0)) }, { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH + (s3.dI||0) + (s3.dJ||0)) }, { l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' }].map(s => (
                 <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
