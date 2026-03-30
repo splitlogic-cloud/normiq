@@ -240,7 +240,7 @@ function calcStep3(base: number, vals: Record<string, number>) {
   return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, dSLP, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ + dSLP) }
 }
 
-function calcEga(base: number, passiv: boolean, extraNed: number = 0) {
+function calcEga(base: number, passiv: boolean, extraNed: number = 0, kommunalskattPct: number = 32.0) {
   // Skatteverkets formel (NE blankett):
   // R43 (25%-avdraget) = R42 * 0.25 direkt
   // R47 (slutligt överskott) = R42 - R43 = R42 * 0.75
@@ -249,9 +249,11 @@ function calcEga(base: number, passiv: boolean, extraNed: number = 0) {
     const sls = Math.round(base * 0.2426)
     const avd25 = Math.round(base * 0.25)  // SKV: 25% av underlaget direkt
     const slutlig = base - avd25
-    const kom = Math.round(slutlig * 0.32)
+    const kom = Math.round(slutlig * (kommunalskattPct / 100))
     const beg = Math.round(slutlig * 0.00279)
-    return { sum: sls, ned: 0, netto: sls, avd25, slutlig, kom, beg, ef: 0, rf: 0, tot: kom + beg + sls }
+    const statligBrytpunkt = 598500
+    const statlig = slutlig > statligBrytpunkt ? Math.round((slutlig - statligBrytpunkt) * 0.20) : 0
+    return { sum: sls, ned: 0, netto: sls, avd25, slutlig, kom, beg, statlig, ef: 0, rf: 0, tot: kom + beg + sls + statlig }
   }
   const r = { ap: 0.1021, sj: 0.0364, fp: 0.026, ep: 0.006, as: 0.002, am: 0, al: 0.1162 }
   const parts = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(base * v)]))
@@ -261,9 +263,12 @@ function calcEga(base: number, passiv: boolean, extraNed: number = 0) {
   // Skatteverket: avdrag = underlag (base) × 0.25, INTE (base - netto_ega) × 0.25
   const avd25 = Math.round(base * 0.25)
   const slutlig = base - avd25  // = base * 0.75
-  const kom = Math.round(slutlig * 0.32)
+  const kom = Math.round(slutlig * (kommunalskattPct / 100))
   const beg = Math.round(slutlig * 0.00279)
-  return { ...parts, sum, ned, netto, avd25, slutlig, kom, beg, ef: 0, rf: 0, tot: kom + beg + netto }
+  // Statlig inkomstskatt 20% på inkomst över brytpunkten (598 500 kr för 2024)
+  const statligBrytpunkt = 598500
+  const statlig = slutlig > statligBrytpunkt ? Math.round((slutlig - statligBrytpunkt) * 0.20) : 0
+  return { ...parts, sum, ned, netto, avd25, slutlig, kom, beg, statlig, ef: 0, rf: 0, tot: kom + beg + netto + statlig }
 }
 
 // ─── Formatting ──────────────────────────────
@@ -349,6 +354,9 @@ export default function DeklaraPage() {
   const setAv = (k: string, v: 'ja' | 'nej') => setAvstamning(prev => ({ ...prev, [k]: v }))
   const avstamningKlar = Object.values(avstamning).every(v => v !== null)
 
+  // Skattesatser
+  const [kommunalskatt, setKommunalskatt] = useState<number>(32.0)  // schabloon, justerbar
+
   // Step 3 fields
   const [j, setJ] = useState<Record<string, number>>({})
   const setJv = (k: string, v: number) => setJ(prev => ({ ...prev, [k]: v }))
@@ -377,7 +385,7 @@ export default function DeklaraPage() {
   const bokf = mapping?.bokf || 0
   const s3 = calcStep3(bokf, j)
   const skattemassigt = j.useManual ? (j.manualOverskott || 0) : s3.tot
-  const ega = calcEga(skattemassigt, passiv, extraNed)
+  const ega = calcEga(skattemassigt, passiv, extraNed, kommunalskatt)
 
   // Parse flow
   async function runParse(sie: SIEData, fname: string) {
@@ -558,12 +566,20 @@ export default function DeklaraPage() {
       bokfOvsk ? u(7600, bokfOvsk) : '',
       '',
       '; ── Skattemässiga justeringar ─────────────',
+      j.r25_rf ? u(7745, Math.round(j.r25_rf||0)) : '',  // R25 Sparat fördelningsbelopp
+      j.useRF && j.r19 ? u(7750, Math.round(j.r19||0)) : '',  // R26 Positiv räntefördelning
+      j.useRF && j.r20 ? u(7755, Math.round(j.r20||0)) : '',  // R27 Negativ räntefördelning
       r16hk ? u(7701, r16hk) : '',         // R16 hemmakontor
       r22res ? u(7704, r22res) : '',        // R22 resor/traktamente
-      j.r10 ? u(7730, Math.round(j.r10||0)) : '',  // Periodiseringsfond
+      j.r10 ? u(7730, Math.round(j.r10||0)) : '',  // Periodiseringsfond avsättning
+      j.r11 ? u(7731, Math.round(j.r11||0)) : '',  // Periodiseringsfond obligatorisk återföring
+      j.r12 ? u(7732, Math.round(j.r12||0)) : '',  // Periodiseringsfond frivillig återföring
       r40 ? u(7713, r40) : '',              // R40 Medgivna EGA föregående år
       r41 ? u(7714, r41) : '',              // R41 Påförda EGA föregående år
       '',
+      '; ── Pension & SLP ──────────────────────────',
+      j.r24 ? u(7760, Math.round(j.r24||0)) : '',  // R38 Pensionsavdrag
+      (s3.dSLP||0) > 0 ? u(7762, s3.dSLP||0) : '', // R39 SLP på pensionssparavdrag
       '; ── Egenavgifter ──────────────────────────',
       u(8046, 'X'),                         // Beräkna egenavgifter
       u(8000, 'X'),                         // Maximalt avdrag
@@ -572,7 +588,8 @@ export default function DeklaraPage() {
       ega.avd25 ? u(8012, ega.avd25) : '',  // 25%-avdraget
       '',
       '; ── Slutresultat ──────────────────────────',
-      u(7630, r47),                         // R47 Slutligt överskott → INK1 ruta 10.1
+      r47 > 0 ? u(7630, r47) : '',          // R47 Slutligt överskott → INK1 ruta 10.1
+      r47 <= 0 ? u(7631, Math.abs(r47)) : '', // R48 Underskott → INK1 ruta 10.2
       '',
       '#SYSTEMINFO SkattAI/Normiq',
       '#BLANKETTSLUT',
@@ -1073,7 +1090,7 @@ export default function DeklaraPage() {
             {/* ── RÄNTEFÖRDELNING (opt-in) ── */}
             <Accordion code="NE §D" name="Räntefördelning (frivillig)" sum={j.useRF ? sgn(s3.dD) : 'Ej vald'}>
               <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
-                Omvandlar näringsinkomst till kapitalinkomst (30% skatt istället för full inkomstskatt). Ränta 6,49% × kapitalunderlag. Välj aktivt om du vill använda.
+                Omvandlar näringsinkomst till kapitalinkomst (30% skatt). Max = 6,49% × kapitalunderlag + sparat fördelningsbelopp fg år (R25). Välj aktivt om du vill använda.
               </div>
               <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDD8CF', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <input type="checkbox" id="useRF" checked={!!j.useRF} onChange={e => { setJv('useRF', e.target.checked ? 1 : 0); if (!e.target.checked) { setJv('r19', 0) } }} style={{ cursor: 'pointer', width: 15, height: 15 }} />
@@ -1088,14 +1105,19 @@ export default function DeklaraPage() {
                   <input type="number" value={j.r17 || 0} onChange={e => setJv('r17', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#EFF7F2', border: '1px solid #B7D9C8', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R25</span>
+                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Sparat fördelningsbelopp från föregående år</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Outnyttjat belopp från fg år NE § Räntefördelning</div></div>
+                  <input type="number" value={j.r25_rf || 0} onChange={e => setJv('r25_rf', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R18</span>
-                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Max positiv räntefördelning (6,49% × R17)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto</div></div>
-                  <input readOnly value={Math.round((j.r17||0)*0.0649)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Max positiv räntefördelning (6,49% × R17 + R25)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto — kapitalunderlag + sparat fg år</div></div>
+                  <input readOnly value={Math.round((j.r17||0)*0.0649 + (j.r25_rf||0))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R19</span>
                   <div><div style={{ fontSize: 13, color: '#3A3832' }}>Positiv räntefördelning att utnyttja</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Max {fmt(Math.round((j.r17||0)*0.0649))} kr · Beskattas som kapitalinkomst 30%</div></div>
-                  <input type="number" value={j.r19 || 0} onChange={e => setJv('r19', Math.min(parseInt(e.target.value)||0, Math.round((j.r17||0)*0.0649)))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <input type="number" value={j.r19 || 0} onChange={e => setJv('r19', Math.min(parseInt(e.target.value)||0, Math.round((j.r17||0)*0.0649 + (j.r25_rf||0))))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R20</span>
@@ -1240,6 +1262,14 @@ export default function DeklaraPage() {
                   <option value="passiv">Passiv — arbetar ej</option>
                 </select>
               </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B' }}>KOM</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Kommunalskattesats</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Din kommun · Schabloon 32,0% · Ange din faktiska sats</div></div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <input type="number" value={kommunalskatt} onChange={e => setKommunalskatt(parseFloat(e.target.value)||32.0)} step="0.1" style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 8px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: 80, textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#9A9690' }}>%</span>
+                </div>
+              </div>
               <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'center', padding: '9px 14px' }}>
                 <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B' }}>E1</span>
                 <div><div style={{ fontSize: 13, color: '#3A3832' }}>Underlag egenavgifter</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Skattemässigt överskott · Auto</div></div>
@@ -1305,7 +1335,7 @@ export default function DeklaraPage() {
               <div style={{ flex: 1, height: 1, background: '#DDD8CF' }} />
             </div>
             <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, overflow: 'hidden', marginBottom: 18 }}>
-              {[{ l: 'Slutligt överskott (E6)', sub: 'Underlag kommunalskatt', v: fmt(ega.slutlig) + ' kr', c: '#2D6A4F' }, { l: 'Kommunal inkomstskatt (32,0%)', sub: 'Schablonsats', v: '−' + fmt(ega.kom) + ' kr', c: '#C0392B' }, { l: 'Begravningsavgift (0,279%)', sub: '', v: '−' + fmt(ega.beg) + ' kr', c: '#C0392B' }].map((row, i) => (
+              {[{ l: 'Slutligt överskott (E6)', sub: 'Underlag kommunalskatt', v: fmt(ega.slutlig) + ' kr', c: '#2D6A4F' }, { l: `Kommunal inkomstskatt (${kommunalskatt.toFixed(1).replace('.',',')}%)`, sub: 'Din kommunalskattesats', v: '−' + fmt(ega.kom) + ' kr', c: '#C0392B' }, { l: 'Begravningsavgift (0,279%)', sub: '', v: '−' + fmt(ega.beg) + ' kr', c: '#C0392B' }].map((row, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <div><div style={{ fontSize: 13, color: '#3A3832' }}>{row.l}</div>{row.sub && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 1 }}>{row.sub}</div>}</div>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: row.c }}>{row.v}</span>
@@ -1318,6 +1348,15 @@ export default function DeklaraPage() {
                 <div><div style={{ fontSize: 13, color: '#3A3832' }}>Netto-egenavgifter</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 1 }}>Via slutskattsedeln</div></div>
                 <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: '#C0392B' }}>−{fmt(ega.netto)} kr</span>
               </div>
+              {(ega.statlig||0) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF', background: '#FDF5E6' }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: '#92620A', fontWeight: 500 }}>Statlig inkomstskatt (20%)</div>
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 1 }}>På belopp över 598 500 kr · Överskjutande: {fmt(Math.max(0,(ega.slutlig||0)-598500))} kr</div>
+                  </div>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: '#C0392B' }}>−{fmt(ega.statlig||0)} kr</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#EDE8DF', borderTop: '2px solid #C8C3BA' }}>
                 <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700 }}>Total skatt & avgifter 2024</span>
                 <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: '#C0392B' }}>{fmt(ega.tot)} kr</span>
