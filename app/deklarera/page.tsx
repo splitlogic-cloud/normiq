@@ -606,17 +606,17 @@ export default function DeklaraPage() {
       r41 ? u(7713, r41) : '',
 
       // Pension & SLP
-      j.r24 ? u(7760, Math.round(j.r24||0)) : '',
-      (s3.dSLP||0) !== 0 ? u(7762, Math.abs(s3.dSLP||0)) : '',
+      j.r24 ? u(7711, Math.round(j.r24||0)) : '',   // R38 Pensionsavdrag
+      (s3.dSLP||0) !== 0 ? u(7712, Math.abs(s3.dSLP||0)) : '',  // R39 SLP
 
       // Slutresultat
       ...(r47 > 0 ? [
         // Överskott
         u(8046, 'X'),
         u(8000, 'X'),
-        ega.sum   ? u(8009, Math.abs(ega.sum))   : '',
-        ega.ned   ? u(8011, Math.abs(ega.ned))   : '',
-        u(8012, Math.abs(ega.avd25)),
+        ega.sum ? u(8009, Math.abs(ega.sum)) : '',
+        ega.ned ? u(8011, Math.abs(ega.ned)) : '',
+        u(7714, Math.round(r47 / 3)),  // R43 25%-avdrag = R47/3 (Skatteverkets formel)
         u(7630, r47),
       ] : [
         // Underskott — Visma: 7730 = underskottsbelopp, 8012 = samma, 7601 = kvarstående
