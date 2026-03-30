@@ -36,6 +36,8 @@ interface MappingData {
   flags: NEFlag[]
   avskr: number
   kapital: number
+  autoR31: number
+  autoR32: number
 }
 
 interface BSData {
