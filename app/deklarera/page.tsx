@@ -542,54 +542,51 @@ export default function DeklaraPage() {
     
     // BLANKETTER.SRU
     const blanketter = [
-      `#BLANKETT NE-2025P4`,
+      '#BLANKETT NE-2025P4',
       `#IDENTITET ${orgFull} ${dateFmt} ${timeFmt}`,
       sieData?.companyName ? `#NAMN ${sieData.companyName}` : '',
       '',
-      '; ── Räkenskapsår ──────────────────────────',
       u(7011, sieData?.fiscalYearStart || '20250101'),
       u(7012, sieData?.fiscalYearEnd || '20251231'),
-      u(7023, 'X'),  // Aktiv näring
+      u(7023, 'X'),
       '',
-      '; ── Intäkter ──────────────────────────────',
-      fv('R1') ? u(7400, fv('R1')) : '',   // R1 Nettoomsättning
-      fv('R2') ? u(7410, fv('R2')) : '',   // R2 Övriga rörelseintäkter
+      fv('R1') ? u(7400, Math.abs(fv('R1'))) : '',
+      fv('R2') ? u(7410, Math.abs(fv('R2'))) : '',
+      fv('R3') ? u(7420, Math.abs(fv('R3'))) : '',
       '',
-      '; ── Kostnader ─────────────────────────────',
-      sumKost ? u(7501, sumKost) : '',     // Summa kostnader
-      fv('R13') ? u(7300, fv('R13')) : '', // R13 Lokalkostnader
-      fv('R14') ? u(7280, fv('R14')) : '', // R14 Resekostnader
-      fv('R15') ? u(7290, fv('R15')) : '', // R15 Övriga externa
+      sumKost ? u(7501, Math.abs(sumKost)) : '',
+      fv('R13') ? u(7300, Math.abs(fv('R13'))) : '',
+      fv('R14') ? u(7380, Math.abs(fv('R14'))) : '',
+      fv('R15') ? u(7385, Math.abs(fv('R15'))) : '',
+      fv('R17') ? u(7285, Math.abs(fv('R17'))) : '',
       '',
-      '; ── Bokfört överskott ─────────────────────',
-      bokfOvsk ? u(7440, bokfOvsk) : '',
-      bokfOvsk ? u(7600, bokfOvsk) : '',
+      bokfOvsk > 0 ? u(7440, bokfOvsk) : '',
+      bokfOvsk > 0 ? u(7600, bokfOvsk) : '',
+      bokfOvsk < 0 ? u(7441, Math.abs(bokfOvsk)) : '',
+      bokfOvsk < 0 ? u(7601, Math.abs(bokfOvsk)) : '',
       '',
-      '; ── Skattemässiga justeringar ─────────────',
-      j.r25_rf ? u(7745, Math.round(j.r25_rf||0)) : '',  // R25 Sparat fördelningsbelopp
-      j.useRF && j.r19 ? u(7750, Math.round(j.r19||0)) : '',  // R26 Positiv räntefördelning
-      j.useRF && j.r20 ? u(7755, Math.round(j.r20||0)) : '',  // R27 Negativ räntefördelning
-      r16hk ? u(7701, r16hk) : '',         // R16 hemmakontor
-      r22res ? u(7704, r22res) : '',        // R22 resor/traktamente
-      j.r10 ? u(7730, Math.round(j.r10||0)) : '',  // Periodiseringsfond avsättning
-      j.r11 ? u(7731, Math.round(j.r11||0)) : '',  // Periodiseringsfond obligatorisk återföring
-      j.r12 ? u(7732, Math.round(j.r12||0)) : '',  // Periodiseringsfond frivillig återföring
-      r40 ? u(7713, r40) : '',              // R40 Medgivna EGA föregående år
-      r41 ? u(7714, r41) : '',              // R41 Påförda EGA föregående år
+      r16hk ? u(7701, r16hk) : '',
+      r22res ? u(7704, r22res) : '',
+      j.r10 ? u(7730, Math.abs(Math.round(j.r10||0))) : '',
+      j.r11 ? u(7731, Math.abs(Math.round(j.r11||0))) : '',
+      j.r12 ? u(7732, Math.abs(Math.round(j.r12||0))) : '',
+      j.r25_rf ? u(7745, Math.abs(Math.round(j.r25_rf||0))) : '',
+      j.useRF && j.r19 ? u(7750, Math.abs(Math.round(j.r19||0))) : '',
+      j.useRF && j.r20 ? u(7755, Math.abs(Math.round(j.r20||0))) : '',
+      r40 ? u(7713, Math.abs(r40)) : '',
+      r41 ? u(7714, Math.abs(r41)) : '',
       '',
-      '; ── Pension & SLP ──────────────────────────',
-      j.r24 ? u(7760, Math.round(j.r24||0)) : '',  // R38 Pensionsavdrag
-      (s3.dSLP||0) > 0 ? u(7762, s3.dSLP||0) : '', // R39 SLP på pensionssparavdrag
-      '; ── Egenavgifter ──────────────────────────',
-      u(8046, 'X'),                         // Beräkna egenavgifter
-      u(8000, 'X'),                         // Maximalt avdrag
-      ega.sum ? u(8009, ega.sum) : '',      // Beräknade egenavgifter brutto
-      ega.ned ? u(8011, ega.ned) : '',      // Nedsättning
-      ega.avd25 ? u(8012, ega.avd25) : '',  // 25%-avdraget
+      j.r24 ? u(7760, Math.abs(Math.round(j.r24||0))) : '',
+      (s3.dSLP||0) > 0 ? u(7762, Math.abs(s3.dSLP||0)) : '',
       '',
-      '; ── Slutresultat ──────────────────────────',
-      r47 > 0 ? u(7630, r47) : '',          // R47 Slutligt överskott → INK1 ruta 10.1
-      r47 <= 0 ? u(7631, Math.abs(r47)) : '', // R48 Underskott → INK1 ruta 10.2
+      r47 > 0 ? u(8046, 'X') : '',
+      r47 > 0 ? u(8000, 'X') : '',
+      r47 > 0 && ega.sum ? u(8009, Math.abs(ega.sum)) : '',
+      r47 > 0 && ega.ned ? u(8011, Math.abs(ega.ned)) : '',
+      r47 > 0 && ega.avd25 ? u(8012, Math.abs(ega.avd25)) : '',
+      '',
+      r47 > 0 ? u(7630, r47) : '',
+      r47 <= 0 ? u(7631, Math.abs(r47)) : '',
       '',
       '#SYSTEMINFO SkattAI/Normiq',
       '#BLANKETTSLUT',
@@ -1400,7 +1397,7 @@ export default function DeklaraPage() {
               <span>SRU-förhandsvisning</span><div style={{ flex: 1, height: 1, background: '#DDD8CF' }} />
             </div>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, padding: '16px 18px', marginBottom: 18, whiteSpace: 'pre', overflowX: 'auto', lineHeight: 1.9, color: '#6A6660' }}>
-              {generateSRU().blanketter}
+              {generateSRU().blanketter.split('\n').filter(l => !l.startsWith(';')).join('\n')}
             </div>
 
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9A9690', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
