@@ -212,7 +212,11 @@ function calcStep3(base: number, vals: Record<string, number>) {
   const dF = g('r25') + g('r27') - g('r24') - g('r26')
   const dG = -(g('r28') - g('r29'))
   const dH = g('r31') + g('r32') + g('r33') + g('r34') - g('r35')
-  return { dA, dB, dC, dD, dE, dF, dG, dH, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH) }
+  // §I Resor & traktamente (ej bokförda)
+  const dI = -(g('resor_mil') * 25 + g('resor_trakt') * 290)
+  // §J Hemmakontor
+  const dJ = -(g('hemmakontor') + g('hemmakontor_internet'))
+  return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ) }
 }
 
 function calcEga(base: number, passiv: boolean, extraNed: number = 0) {
@@ -736,7 +740,7 @@ export default function DeklaraPage() {
 
             {/* Summary */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
-              {[{ l: 'Bokfört', v: fmt(bokf) + ' kr' }, { l: 'Avskr.', v: sgn(s3.dA) }, { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + s3.dD) }, { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH) }, { l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' }].map(s => (
+              {[{ l: 'Bokfört', v: fmt(bokf) + ' kr' }, { l: 'Avskr.', v: sgn(s3.dA) }, { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + s3.dD) }, { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH + (s3.dI||0) + (s3.dJ||0)) }, { l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' }].map(s => (
                 <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
                   <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700 }}>{s.v}</div>
@@ -767,12 +771,12 @@ export default function DeklaraPage() {
                       {f.hint && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>{f.hint}</div>}
                     </div>
                     <input
-                      type="text"
-                      value={fmt(j[f.id] || 0)}
+                      type="number"
+                      value={j[f.id] || 0}
                       readOnly={!!f.calc}
                       onChange={e => {
                         if (f.calc) return
-                        const v = parseInt(e.target.value.replace(/\D/g, '')) || 0
+                        const v = parseInt(e.target.value) || 0
                         setJv(f.id, v)
                       }}
                       style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: f.calc ? '#EDE8DF' : f.sie ? '#EFF7F2' : '#F5F0E8', border: `1px solid ${f.calc ? '#DDD8CF' : f.sie ? '#B7D9C8' : '#C8C3BA'}`, color: f.calc ? '#9A9690' : '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }}
@@ -782,9 +786,53 @@ export default function DeklaraPage() {
               </Accordion>
             ))}
 
+            {/* ── RESOR & TRAKTAMENTE ── */}
+            <Accordion code="NE §I" name="Resor & traktamente (ej bokförda)" sum={sgn(-(j.resor_mil||0)*0.25-(j.resor_trakt||0))}>
+              <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
+                Milersättning för tjänsteresor med privat bil: <strong>25 kr/mil</strong> (2024). Traktamente inrikes helpension: <strong>290 kr/dag</strong>. Dessa läggs som avdrag om de inte redan bokförts som kostnad.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>MIL</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Antal tjänstemil med privat bil (ej bokförda)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Avdrag = antal mil × 25 kr</div></div>
+                <input type="number" value={j.resor_mil || 0} onChange={e => setJv('resor_mil', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>AVD</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Milersättningsavdrag (25 kr × mil)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto</div></div>
+                <input readOnly value={Math.round((j.resor_mil||0)*25)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>TRAKT</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Traktamente — antal dagar med helpension</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>290 kr/dag inrikes · Ej bokfört sedan tidigare</div></div>
+                <input type="number" value={j.resor_trakt || 0} onChange={e => setJv('resor_trakt', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>AVD</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Traktamentsavdrag (290 kr × dagar)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto</div></div>
+                <input readOnly value={Math.round((j.resor_trakt||0)*290)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+              </div>
+            </Accordion>
+
+            {/* ── HEMMAKONTOR ── */}
+            <Accordion code="NE §J" name="Hemmakontor & arbetsrum" sum={sgn(-(j.hemmakontor||0))}>
+              <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
+                Avdrag för arbetsrum i bostaden: schablonbelopp <strong>2 000 kr/år</strong> om rummet används uteslutande för arbete. Faktisk hyresandel kan dras av om du hyr i andrahand. Ange avdragsbeloppet direkt.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>HK</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Avdrag hemmakontor / arbetsrum</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Schablonbelopp 2 000 kr — eller faktisk hyresandel</div></div>
+                <input type="number" value={j.hemmakontor || 0} onChange={e => setJv('hemmakontor', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>INT</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Internetavdrag (arbetsandel av privat abonnemang)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Skälig andel om ej bokförd · Vanligen 50–100%</div></div>
+                <input type="number" value={j.hemmakontor_internet || 0} onChange={e => setJv('hemmakontor_internet', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+              </div>
+            </Accordion>
+
             {/* Calc summary */}
             <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, marginTop: 20, overflow: 'hidden' }}>
-              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: sgn(s3.dD) }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }].map((row, i) => (
+              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: sgn(s3.dD) }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }, { l: '§I Resor & traktamente', v: sgn(s3.dI||0) }, { l: '§J Hemmakontor', v: sgn(s3.dJ||0) }].map((row, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #DDD8CF', fontSize: 13 }}>
                   <span style={{ color: '#6A6660' }}>{row.l}</span>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500 }}>{row.v}</span>
