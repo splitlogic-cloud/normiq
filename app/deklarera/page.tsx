@@ -580,9 +580,32 @@ export default function DeklaraPage() {
       // Kostnader
       sumKost ? u(7501, sumKost) : '',
 
-      // Bokfört resultat — negativt = underskott, Visma skickar med negativt tecken
-      // Tillgångar — om inga tillgångar, kryssa i B1
-      saknarTillgangar ? u(7100, 'X') : '',  // Verksamheten saknar tillgångar och skulder
+      // Balansräkning tillgångar
+      saknarTillgangar ? u(7100, 'X') : '',
+      ...(() => {
+        if (!bs || saknarTillgangar) return []
+        const bsSum = (from: string, to: string) =>
+          Math.round(Math.abs(bs.al.filter((l: {acc:string;amt:number}) => l.acc >= from && l.acc <= to).reduce((s: number, l: {amt:number}) => s + l.amt, 0)))
+        const llSum = (from: string, to: string) =>
+          Math.round(bs.ll.filter((l: {acc:string;amt:number}) => l.acc >= from && l.acc <= to).reduce((s: number, l: {amt:number}) => s + l.amt, 0))
+        const rows: string[] = []
+        const invBrut = bsSum('1200','1259'); const invAck = bsSum('1260','1299')
+        if (invBrut > 0) rows.push(u(7215, invBrut - invAck))
+        const fastigh = bsSum('1100','1199'); if (fastigh > 0) rows.push(u(7214, fastigh))
+        const lager = bsSum('1400','1499'); if (lager > 0) rows.push(u(7240, lager))
+        const kundfordr = bsSum('1500','1599'); if (kundfordr > 0) rows.push(u(7381, kundfordr))
+        const ovrigaFordr = bsSum('1600','1899'); if (ovrigaFordr > 0) rows.push(u(7383, ovrigaFordr))
+        const kassa = bsSum('1900','1999'); if (kassa > 0) rows.push(u(7280, kassa))
+        const ek = llSum('2000','2099'); if (ek !== 0) rows.push(u(7310, ek))
+        const pf = llSum('2100','2199'); if (pf > 0) rows.push(u(7321, pf))
+        const langfr = llSum('2200','2399'); if (langfr > 0) rows.push(u(7351, langfr))
+        const levsk = llSum('2400','2499'); if (levsk > 0) rows.push(u(7365, levsk))
+        const skattesk = llSum('2500','2599'); if (skattesk > 0) rows.push(u(7368, skattesk))
+        const momsSk = llSum('2600','2999'); if (momsSk > 0) rows.push(u(7369, momsSk))
+        return rows
+      })(),
+
+      // Bokfört resultat
       u(7440, bokfOvsk),
       u(7600, bokfOvsk),
 
