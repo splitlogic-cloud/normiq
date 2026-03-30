@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
 // ─── Types ───────────────────────────────────
 interface SIEData {
@@ -267,6 +267,26 @@ const DEMO_SIE = `#FLAGGA 0
 #UB 0 2010 45000
 #UB 0 2440 -28000
 #UB 0 2500 -15000`
+
+// ─── Accordion Component ─────────────────────
+function Accordion({ code, name, sum, children }: { code: string; name: string; sum: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <div style={{ border: '1px solid #DDD8CF', borderRadius: 4, marginBottom: 8, overflow: 'hidden', background: '#fff' }}>
+      <div onClick={() => setOpen(!open)} style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', background: '#EDE8DF' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.06em', color: '#C0392B', background: '#FDF0EE', border: '1px solid #E8C4BF', padding: '2px 8px' }}>{code}</span>
+          <span style={{ fontSize: 13, fontWeight: 500 }}>{name}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {sum && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#9A9690' }}>{sum}</span>}
+          <span style={{ fontSize: 10, color: '#9A9690', transform: open ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .2s' }}>▾</span>
+        </div>
+      </div>
+      {open && <div>{children}</div>}
+    </div>
+  )
+}
 
 // ─── Main Component ───────────────────────────
 export default function DeklaraPage() {
@@ -701,77 +721,259 @@ export default function DeklaraPage() {
           </div>
         )}
 
-        {/* Steps 4-6 follow the same pattern — abbreviated here for space */}
-        {(step === 4 || step === 5 || step === 6) && (
+        {/* ── STEP 4: JUSTERINGAR ── */}
+        {step === 4 && (
           <div style={{ maxWidth: 780, padding: '32px 36px 60px' }}>
-            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav((step as number) - 1)}>← TILLBAKA</div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 16 }}>
-              {step === 4 ? 'Skattemässiga justeringar' : step === 5 ? 'Egenavgifter & skatteuträkning' : 'Granska & exportera'}
-            </h1>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav(3)}>← TILLBAKA</div>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>Skattemässiga justeringar</h1>
+            <div style={{ fontSize: 13, color: '#6A6660', marginBottom: 20 }}>Bokfört resultat justeras till skattemässigt överskott. <span style={{ color: '#2D6A4F' }}>Grön kant</span> = SIE-förifyllt. Allt räknas om live.</div>
 
-            {/* Summary strip */}
-            <div style={{ display: 'grid', gridTemplateColumns: step === 4 ? 'repeat(5,1fr)' : step === 5 ? 'repeat(5,1fr)' : 'repeat(4,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
-              {step === 4 && [
-                { l: 'Bokfört', v: fmt(bokf) + ' kr' },
-                { l: 'Avskr.', v: sgn(s3.dA) },
-                { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + s3.dD) },
-                { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH) },
-                { l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' },
-              ].map(s => (
+            {/* Summary */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
+              {[{ l: 'Bokfört', v: fmt(bokf) + ' kr' }, { l: 'Avskr.', v: sgn(s3.dA) }, { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + s3.dD) }, { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH) }, { l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' }].map(s => (
                 <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
-                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700 }}>{s.v}</div>
-                </div>
-              ))}
-              {step === 5 && [
-                { l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' },
-                { l: 'Egenavgifter', v: fmt(ega.sum) + ' kr', c: '#C0392B' },
-                { l: 'Nedsättning', v: '−' + fmt(ega.ned) + ' kr', c: '#2D6A4F' },
-                { l: '25%-avdrag', v: '−' + fmt(ega.avd25) + ' kr', c: '#2D6A4F' },
-                { l: 'Total skatt', v: fmt(ega.tot) + ' kr', c: '#C0392B' },
-              ].map(s => (
-                <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
-                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: s.c || '#1A1A18' }}>{s.v}</div>
-                </div>
-              ))}
-              {step === 6 && [
-                { l: 'Överskott av näring', v: fmt(ega.slutlig) + ' kr' },
-                { l: 'Egenavgifter', v: fmt(ega.netto) + ' kr', c: '#C0392B' },
-                { l: 'Kommunalskatt', v: fmt(ega.kom) + ' kr', c: '#C0392B' },
-                { l: 'Total skatt & avg.', v: fmt(ega.tot) + ' kr', c: '#C0392B' },
-              ].map(s => (
-                <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
-                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: s.c || '#1A1A18' }}>{s.v}</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700 }}>{s.v}</div>
                 </div>
               ))}
             </div>
 
-            {step === 6 && (
-              <>
-                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, padding: '16px 18px', marginBottom: 18, whiteSpace: 'pre', overflowX: 'auto', lineHeight: 1.9, color: '#9A9690' }}>
-                  {generateSRU()}
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 22, flexWrap: 'wrap' }}>
-                  <button onClick={downloadSRU} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>↓ Ladda ner SRU-fil</button>
-                  <button onClick={() => openDrawer('Finns det något sista jag bör kontrollera innan jag lämnar in deklarationen?')} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Sista granskning med Normiq</button>
-                </div>
-                <div style={{ marginTop: 24, padding: '10px 14px', background: '#FDF5E6', border: '1px solid #E8D4A0', borderRadius: 2, fontSize: 12, color: '#92620A', lineHeight: 1.65 }}>
-                  ⚠ Normiq Deklarera är ett AI-assisterat hjälpmedel. Alla beräkningar bör granskas av behörig redovisningskonsult innan inlämning till Skatteverket.
-                </div>
-              </>
-            )}
+            {/* Accordions */}
+            {[
+              { code: 'NE §A', name: 'Avskrivningar & nedskrivningar', sum: sgn(s3.dA), info: { type: 'blue', text: 'Räkenskapsenlig avskrivning max 30% av ingående UB. Differens mot bokförd = skattemässigt tillägg (+) eller avdrag (−).' }, fields: [{ id: 'r5', label: 'Bokförda avskrivningar på inventarier', hint: 'Konto 7810–7839 i SIE', sie: true }, { id: 'r6', label: 'Skattemässigt tillåtna avskrivningar', hint: 'Max 30% × ingående UB inventarier', sie: true }, { id: 'r7', label: 'Skillnad (R6 − R5)', hint: 'Auto', calc: true }, { id: 'r8', label: 'Nedskrivning lager (återföring)', hint: '' }, { id: 'r9', label: 'Övriga skattemässiga tillägg', hint: 'Omedelbart avdrag inventarier < 28 650 kr' }] },
+              { code: 'NE §B', name: 'Periodiseringsfond', sum: sgn(s3.dB), info: { type: 'amber', text: `⚡ Max avsättning: 30% × ${fmt(bokf)} kr = ${fmt(Math.floor(bokf * 0.30))} kr. Skattebesparning ca ${fmt(Math.round(Math.floor(bokf * 0.30) * 0.30))} kr.` }, fields: [{ id: 'r10', label: 'Årets avsättning till periodiseringsfond', hint: 'Max 30% av skattemässigt överskott · Frivillig' }, { id: 'r11', label: 'Obligatorisk återföring (tax.år 2019)', hint: 'Senaste möjliga återföring' }, { id: 'r12', label: 'Frivillig återföring (tax.år 2020–2024)', hint: '' }, { id: 'r13', label: 'Ränta på kvarvarande fond (1,50%)', hint: '1,50% × ingående fondbalans · Intäkt' }] },
+              { code: 'NE §C', name: 'Expansionsfond', sum: sgn(s3.dC), info: { type: 'blue', text: '20,6% fondskatt vid avsättning. Max = justerat eget kapital.' }, fields: [{ id: 'r14', label: 'Avsättning till expansionsfond', hint: '20,6% fondskatt · Frivillig' }, { id: 'r15', label: 'Minskning av expansionsfond', hint: '' }, { id: 'r16', label: 'Expansionsfondsskatt (20,6% × R14)', hint: 'Auto', calc: true }] },
+              { code: 'NE §D', name: 'Räntefördelning', sum: sgn(s3.dD), info: { type: 'blue', text: 'Omvandlar näringsinkomst till kapital (30%). Ränta 6,49% × kapitalunderlag.' }, fields: [{ id: 'r17', label: 'Kapitalunderlag (ingående justerat EK)', hint: 'Auto från balansräkning', sie: true }, { id: 'r18', label: 'Max positiv räntefördelning (6,49% × R17)', hint: 'Auto', calc: true }, { id: 'r19', label: 'Positiv räntefördelning (frivillig)', hint: 'Max R18 · Kapitalinkomst 30%' }, { id: 'r20', label: 'Negativ räntefördelning (obligatorisk)', hint: '' }] },
+              { code: 'NE §E', name: 'Outnyttjat underskott', sum: sgn(s3.dE), info: { type: 'amber', text: 'Rullas vidare utan tidsgräns. Kan kvittas mot tjänst (70%) de första 5 åren.' }, fields: [{ id: 'r21', label: 'Outnyttjat underskott från föregående år', hint: '' }, { id: 'r22', label: 'Utnyttjat underskott i år', hint: 'Auto — max årets överskott', calc: true }, { id: 'r23', label: 'Kvarstående (rullas vidare)', hint: 'Auto', calc: true }] },
+              { code: 'NE §F', name: 'Pension, sjuklön & sjukpenning', sum: sgn(s3.dF), info: { type: 'blue', text: 'Tjänstepension max 35% av överskott (tak 573 000 kr) · IL 28:5.' }, fields: [{ id: 'r24', label: 'Avdrag för pensionssparande / tjänstepension', hint: 'Max 35% · IL 28:5' }, { id: 'r25', label: 'Sjukpenning / föräldrapenning (intäkt)', hint: '' }, { id: 'r26', label: 'Betald sjuklön till anställda', hint: '', sie: true }, { id: 'r27', label: 'Erhållen sjuklöneersättning från FK (intäkt)', hint: '' }] },
+              { code: 'NE §G', name: 'Egenavgifter föregående år — medgivna / påförda', sum: sgn(s3.dG), info: { type: 'blue', text: 'Föregående års 25%-avdrag (medgivna) vs. faktiska avgifter (påförda). Raden de flesta missar.' }, fields: [{ id: 'r28', label: 'Avdrag medgivna egenavgifter föregående år', hint: 'Beloppet du drog av på förra NE' }, { id: 'r29', label: 'Faktiskt påförda egenavgifter föregående år', hint: 'Från slutskattebesked' }, { id: 'r30', label: 'Justering (R28 − R29)', hint: 'Pos = återföring · Neg = extra avdrag · Auto', calc: true }] },
+              { code: 'NE §H', name: 'Övriga justeringar', sum: sgn(s3.dH), info: null, fields: [{ id: 'r31', label: 'Representation — ej avdragsgill del', hint: 'Max 180 kr exkl. moms / person' }, { id: 'r32', label: 'Böter och skattetillägg (IL 9:10)', hint: 'Aldrig avdragsgilla' }, { id: 'r33', label: 'Schablonintäkt (ISK / räntefond i rörelsen)', hint: '' }, { id: 'r34', label: 'Övriga skattemässiga tillägg', hint: '' }, { id: 'r35', label: 'Övriga skattemässiga avdrag', hint: '' }] },
+            ].map(acc => (
+              <Accordion key={acc.code} code={acc.code} name={acc.name} sum={acc.sum}>
+                {acc.info && (
+                  <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, lineHeight: 1.65, borderRadius: 2, background: acc.info.type === 'blue' ? '#EBF3FA' : '#FDF5E6', borderLeft: `2px solid ${acc.info.type === 'blue' ? '#5A96C8' : '#92620A'}`, color: acc.info.type === 'blue' ? '#2A5070' : '#92620A' }}>{acc.info.text}</div>
+                )}
+                {acc.fields.map(f => (
+                  <div key={f.id} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>{f.id.toUpperCase()}</span>
+                    <div>
+                      <div style={{ fontSize: 13, color: '#3A3832', lineHeight: 1.4 }}>{f.label}</div>
+                      {f.hint && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>{f.hint}</div>}
+                    </div>
+                    <input
+                      type="text"
+                      value={fmt(j[f.id] || 0)}
+                      readOnly={f.calc}
+                      onChange={e => {
+                        const v = parseInt(e.target.value.replace(/\D/g, '')) || 0
+                        setJv(f.id, v)
+                      }}
+                      style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: f.calc ? '#EDE8DF' : f.sie ? '#EFF7F2' : '#F5F0E8', border: `1px solid ${f.calc ? '#DDD8CF' : f.sie ? '#B7D9C8' : '#C8C3BA'}`, color: f.calc ? '#9A9690' : '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }}
+                    />
+                  </div>
+                ))}
+              </Accordion>
+            ))}
 
-            {step !== 6 && (
-              <div style={{ display: 'flex', gap: 8, marginTop: 22, flexWrap: 'wrap', alignItems: 'center' }}>
-                <button onClick={() => nav((step as number) + 1)} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>
-                  {step === 4 ? 'Beräkna egenavgifter →' : 'Granska & exportera →'}
-                </button>
-                <button onClick={() => openDrawer(step === 4 ? `Analysera mina justeringar. Bokfört överskott: ${fmt(bokf)} kr. Optimera periodiseringsfond och räntefördelning.` : `Ge råd om skatten. Överskott: ${fmt(skattemassigt)} kr.`)} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Fråga Normiq</button>
-                <button onClick={() => nav((step as number) - 1)} style={{ background: 'none', border: 'none', fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#9A9690', cursor: 'pointer', letterSpacing: '.06em' }}>← Tillbaka</button>
+            {/* Calc summary */}
+            <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, marginTop: 20, overflow: 'hidden' }}>
+              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: sgn(s3.dD) }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }].map((row, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #DDD8CF', fontSize: 13 }}>
+                  <span style={{ color: '#6A6660' }}>{row.l}</span>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500 }}>{row.v}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#EDE8DF', borderTop: '2px solid #C8C3BA' }}>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700 }}>Skattemässigt överskott</span>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700 }}>{fmt(skattemassigt)} kr</span>
               </div>
-            )}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 22, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button onClick={() => nav(5)} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Beräkna egenavgifter →</button>
+              <button onClick={() => openDrawer(`Analysera mina justeringar. Bokfört överskott: ${fmt(bokf)} kr. Optimera periodiseringsfond och räntefördelning.`)} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Fråga Normiq</button>
+              <button onClick={() => nav(3)} style={{ background: 'none', border: 'none', fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#9A9690', cursor: 'pointer', letterSpacing: '.06em' }}>← Tillbaka</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 5: EGENAVGIFTER ── */}
+        {step === 5 && (
+          <div style={{ maxWidth: 780, padding: '32px 36px 60px' }}>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav(4)}>← TILLBAKA</div>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>Egenavgifter & skatteuträkning</h1>
+            <div style={{ fontSize: 13, color: '#6A6660', marginBottom: 20 }}>25%-avdraget justeras mot faktiska avgifter nästa år via NE §G — kom ihåg kopplingen.</div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
+              {[{ l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' }, { l: 'Egenavgifter', v: fmt(ega.sum) + ' kr', c: '#C0392B' }, { l: 'Nedsättning', v: '−' + fmt(ega.ned) + ' kr', c: '#2D6A4F' }, { l: '25%-avdrag', v: '−' + fmt(ega.avd25) + ' kr', c: '#2D6A4F' }, { l: 'Total skatt', v: fmt(ega.tot) + ' kr', c: '#C0392B' }].map(s => (
+                <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700, color: (s as {l:string;v:string;c?:string}).c || '#1A1A18' }}>{s.v}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Aktiv/passiv */}
+            <Accordion code="EGA §1" name="Aktiv / passiv verksamhet" sum="">
+              <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>Aktiv = du arbetar i verksamheten → egenavgifter 28,87%. Passiv → särskild löneskatt 24,26%.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B' }}>E0</span>
+                <div style={{ fontSize: 13, color: '#3A3832' }}>Verksamhetstyp</div>
+                <select value={passiv ? 'passiv' : 'aktiv'} onChange={e => setPassiv(e.target.value === 'passiv')} style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, padding: '6px 8px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', borderRadius: 2, outline: 'none' }}>
+                  <option value="aktiv">Aktiv — arbetar i verksamheten</option>
+                  <option value="passiv">Passiv — arbetar ej</option>
+                </select>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'center', padding: '9px 14px' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B' }}>E1</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Underlag egenavgifter</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Skattemässigt överskott · Auto</div></div>
+                <input readOnly value={fmt(skattemassigt)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EFF7F2', border: '1px solid #B7D9C8', color: '#1A1A18', textAlign: 'right', borderRadius: 2, outline: 'none' }} />
+              </div>
+            </Accordion>
+
+            {/* Spec */}
+            <Accordion code="EGA §2" name="Specifikation egenavgifter 2024" sum={fmt(ega.sum) + ' kr'}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', margin: '4px 0' }}>
+                <thead><tr>{['Avgift','Sats 2024','Belopp'].map(h => <th key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#9A9690', padding: '7px 14px', borderBottom: '1px solid #DDD8CF', textAlign: h === 'Belopp' ? 'right' : 'left', fontWeight: 400, background: '#EDE8DF' }}>{h}</th>)}</tr></thead>
+                <tbody>
+                  {[['Ålderspensionsavgift','10,21%', fmt(Math.round(skattemassigt*0.1021))+' kr'], ['Sjukförsäkringsavgift','3,64%', fmt(Math.round(skattemassigt*0.0364))+' kr'], ['Föräldraförsäkringsavgift','2,60%', fmt(Math.round(skattemassigt*0.026))+' kr'], ['Efterlevandepensionsavgift','0,60%', fmt(Math.round(skattemassigt*0.006))+' kr'], ['Arbetsskadeavgift','0,20%', fmt(Math.round(skattemassigt*0.002))+' kr'], ['Arbetsmarknadsavgift','0,00%','0 kr'], ['Allmän löneavgift','11,62%', fmt(Math.round(skattemassigt*0.1162))+' kr']].map(([name, rate, amt]) => (
+                    <tr key={name} style={{ borderBottom: '1px solid #DDD8CF' }}>
+                      <td style={{ padding: '8px 14px', fontSize: 13 }}>{name}</td>
+                      <td style={{ padding: '8px 14px', fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690' }}>{rate}</td>
+                      <td style={{ padding: '8px 14px', fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, textAlign: 'right' }}>{passiv && name !== 'Allmän löneavgift' ? '0 kr' : amt}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ background: '#EDE8DF' }}>
+                    <td colSpan={2} style={{ padding: '8px 14px', fontSize: 13, fontWeight: 600 }}>Summa egenavgifter</td>
+                    <td style={{ padding: '8px 14px', fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, textAlign: 'right' }}>{fmt(ega.sum)} kr</td>
+                  </tr>
+                </tbody>
+              </table>
+            </Accordion>
+
+            {/* Nedsättning */}
+            <Accordion code="EGA §3" name="Nedsättning av egenavgifter" sum={'−' + fmt(ega.ned) + ' kr'}>
+              <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EFF7F2', borderLeft: '2px solid #2D6A4F', color: '#2D6A4F', borderRadius: 2 }}>Nedsättning 7,5% av underlaget, max 15 000 kr/år.</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B' }}>E2</span>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Nedsättning 7,5% (max 15 000 kr)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto</div></div>
+                <input readOnly value={fmt(ega.ned)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EFF7F2', border: '1px solid #B7D9C8', textAlign: 'right', borderRadius: 2, outline: 'none' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B' }}>E3</span>
+                <div style={{ fontSize: 13, color: '#3A3832' }}>Ytterligare nedsättning (regionalt stöd)</div>
+                <input type="text" value={fmt(extraNed)} onChange={e => setExtraNed(parseInt(e.target.value.replace(/\D/g,''))||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', textAlign: 'right', borderRadius: 2, outline: 'none' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'center', padding: '9px 14px' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B' }}>E2b</span>
+                <div style={{ fontSize: 13, color: '#3A3832' }}>Netto-egenavgifter efter nedsättning</div>
+                <input readOnly value={fmt(ega.netto)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', textAlign: 'right', borderRadius: 2, outline: 'none', color: '#9A9690' }} />
+              </div>
+            </Accordion>
+
+            {/* 25%-avdraget */}
+            <Accordion code="EGA §4" name="25%-avdraget — beräknade egenavgifter" sum={'−' + fmt(ega.avd25) + ' kr'}>
+              <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>25% × (överskott − netto-EGA). Justeras mot faktiska avgifter nästa år via NE §G (R28–R30).</div>
+              {[{ id: 'E4', label: 'Underlag för 25%-avdraget', val: fmt(skattemassigt - ega.netto), hint: 'Skattemässigt − netto-EGA · Auto', sie: false, calc: true }, { id: 'E5', label: 'Avdrag beräknade egenavgifter (25% × E4)', val: fmt(ega.avd25), hint: '→ Justeras på nästa års NE §G', sie: true, calc: true }, { id: 'E6', label: 'Slutligt skattemässigt överskott av aktiv näring', val: fmt(ega.slutlig), hint: '', sie: false, calc: false, result: true }].map(f => (
+                <div key={f.id} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>{f.id}</span>
+                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>{f.label}</div>{f.hint && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>{f.hint}</div>}</div>
+                  <input readOnly value={f.val} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: f.result ? 700 : 500, padding: '6px 10px', background: f.result ? '#FDF5E6' : f.sie ? '#EFF7F2' : '#EDE8DF', border: `1px solid ${f.result ? '#E8D4A0' : f.sie ? '#B7D9C8' : '#DDD8CF'}`, color: f.result ? '#1A1A18' : '#9A9690', textAlign: 'right', borderRadius: 2, outline: 'none' }} />
+                </div>
+              ))}
+            </Accordion>
+
+            {/* Skatteuträkning */}
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9A9690', margin: '22px 0 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
+              <span>Skatteuträkning 2024</span>
+              <div style={{ flex: 1, height: 1, background: '#DDD8CF' }} />
+            </div>
+            <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, overflow: 'hidden', marginBottom: 18 }}>
+              {[{ l: 'Slutligt överskott (E6)', sub: 'Underlag kommunalskatt', v: fmt(ega.slutlig) + ' kr', c: '#2D6A4F' }, { l: 'Kommunal inkomstskatt (32,0%)', sub: 'Schablonsats', v: '−' + fmt(ega.kom) + ' kr', c: '#C0392B' }, { l: 'Begravningsavgift (0,279%)', sub: '', v: '−' + fmt(ega.beg) + ' kr', c: '#C0392B' }].map((row, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>{row.l}</div>{row.sub && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 1 }}>{row.sub}</div>}</div>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: row.c }}>{row.v}</span>
+                </div>
+              ))}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF', background: '#F5F0E8' }}>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#9A9690' }}>Socialavgifter</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
+                <div><div style={{ fontSize: 13, color: '#3A3832' }}>Netto-egenavgifter</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 1 }}>Via slutskattsedeln</div></div>
+                <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, color: '#C0392B' }}>−{fmt(ega.netto)} kr</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#EDE8DF', borderTop: '2px solid #C8C3BA' }}>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700 }}>Total skatt & avgifter 2024</span>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: '#C0392B' }}>{fmt(ega.tot)} kr</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 20 }}>
+              {[{ l: 'Effektiv skattesats', v: ((ega.tot / Math.max(bokf, 1)) * 100).toFixed(1) + '%', s: 'På bokfört överskott' }, { l: 'Kvar efter skatt', v: fmt(bokf - ega.tot) + ' kr', s: 'Netto av bokfört överskott', c: '#2D6A4F' }, { l: 'Spara vid max periodiseringsfond', v: '−~' + fmt(Math.round(Math.floor(bokf * 0.30) * 0.32 + Math.floor(bokf * 0.30) * 0.2887 * 0.25)) + ' kr', s: 'Om 30% av överskott avsätts', red: true }].map(card => (
+                <div key={card.l} style={{ background: card.red ? '#FDF0EE' : '#fff', border: `1px solid ${card.red ? '#E8C4BF' : '#DDD8CF'}`, borderRadius: 4, padding: '14px 16px' }}>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 7 }}>{card.l}</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 24, fontWeight: 700, color: card.red ? '#C0392B' : (card.c || '#1A1A18') }}>{card.v}</div>
+                  <div style={{ fontSize: 11, color: '#9A9690', marginTop: 4 }}>{card.s}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <button onClick={() => nav(6)} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Granska & exportera →</button>
+              <button onClick={() => openDrawer(`Ge råd om hur jag kan sänka skatten. Överskott: ${fmt(skattemassigt)} kr. Total skatt: ${fmt(ega.tot)} kr.`)} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Fråga Normiq</button>
+              <button onClick={() => nav(4)} style={{ background: 'none', border: 'none', fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#9A9690', cursor: 'pointer', letterSpacing: '.06em' }}>← Tillbaka</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 6: GRANSKA ── */}
+        {step === 6 && (
+          <div style={{ maxWidth: 780, padding: '32px 36px 60px' }}>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav(5)}>← TILLBAKA</div>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 16 }}>Granska & exportera</h1>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
+              {[{ l: 'Överskott av näring', v: fmt(ega.slutlig) + ' kr' }, { l: 'Egenavgifter', v: fmt(ega.netto) + ' kr', c: '#C0392B' }, { l: 'Kommunalskatt', v: fmt(ega.kom) + ' kr', c: '#C0392B' }, { l: 'Total skatt & avg.', v: fmt(ega.tot) + ' kr', c: '#C0392B' }].map(s => (
+                <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
+                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700, color: (s as {l:string;v:string;c?:string}).c || '#1A1A18' }}>{s.v}</div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9A9690', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
+              <span>SRU-förhandsvisning</span><div style={{ flex: 1, height: 1, background: '#DDD8CF' }} />
+            </div>
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, padding: '16px 18px', marginBottom: 18, whiteSpace: 'pre', overflowX: 'auto', lineHeight: 1.9, color: '#6A6660' }}>
+              {generateSRU()}
+            </div>
+
+            <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9A9690', margin: '0 0 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
+              <span>Checklista</span><div style={{ flex: 1, height: 1, background: '#DDD8CF' }} />
+            </div>
+            <div style={{ border: '1px solid #DDD8CF', borderRadius: 4, overflow: 'hidden', marginBottom: 20 }}>
+              {[
+                { ok: true, text: 'Alla intäktskonton (3xxx) mappade till NE-rader' },
+                { ok: true, text: 'Bokfört resultat stämmer med SIE-data' },
+                { ok: true, text: 'Egenavgifter beräknade med nedsättning och 25%-avdrag' },
+                { ok: (mapping?.fields?.R14?.value || 0) > 0, warn: (mapping?.fields?.R14?.value || 0) === 0, text: (mapping?.fields?.R14?.value || 0) === 0 ? 'R14 Resekostnader 0 kr — bekräfta att inga tjänsteresor gjorts' : 'Resekostnader kontrollerade' },
+                { ok: (j.r10 || 0) > 0, warn: !(j.r10), text: (j.r10 || 0) === 0 ? `Ingen periodiseringsfond — max ${fmt(Math.floor(bokf * 0.30))} kr möjligt` : `Periodiseringsfond: ${fmt(j.r10)} kr` },
+                { ok: false, warn: true, text: 'NE §G (medgivna/påförda egenavgifter föregående år) — fyll i om du hade avdrag förra året' },
+              ].map((item, i, arr) => (
+                <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '9px 14px', background: '#fff', borderBottom: i < arr.length - 1 ? '1px solid #DDD8CF' : 'none', borderLeft: `3px solid ${item.ok && !item.warn ? '#2D6A4F' : item.warn ? '#92620A' : '#C0392B'}`, fontSize: 12, color: '#3A3832' }}>
+                  <span>{item.ok && !item.warn ? '✓' : item.warn ? '⚠' : '✕'}</span>
+                  {item.text}
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={downloadSRU} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>↓ Ladda ner SRU-fil</button>
+              <button onClick={() => openDrawer('Finns det något sista jag bör kontrollera innan jag lämnar in deklarationen?')} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Sista granskning med Normiq</button>
+            </div>
+            <div style={{ marginTop: 24, padding: '10px 14px', background: '#FDF5E6', border: '1px solid #E8D4A0', borderRadius: 2, fontSize: 12, color: '#92620A', lineHeight: 1.65 }}>
+              ⚠ Normiq Deklarera är ett AI-assisterat hjälpmedel. Alla beräkningar bör granskas av behörig redovisningskonsult innan inlämning till Skatteverket.
+            </div>
           </div>
         )}
       </main>
