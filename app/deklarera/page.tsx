@@ -753,7 +753,7 @@ export default function DeklaraPage() {
                 {acc.info && (
                   <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, lineHeight: 1.65, borderRadius: 2, background: acc.info.type === 'blue' ? '#EBF3FA' : '#FDF5E6', borderLeft: `2px solid ${acc.info.type === 'blue' ? '#5A96C8' : '#92620A'}`, color: acc.info.type === 'blue' ? '#2A5070' : '#92620A' }}>{acc.info.text}</div>
                 )}
-                {acc.fields.map(f => (
+                {(acc.fields as { id: string; label: string; hint: string; calc?: boolean; sie?: boolean }[]).map(f => (
                   <div key={f.id} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                     <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>{f.id.toUpperCase()}</span>
                     <div>
@@ -763,8 +763,9 @@ export default function DeklaraPage() {
                     <input
                       type="text"
                       value={fmt(j[f.id] || 0)}
-                      readOnly={f.calc}
+                      readOnly={!!f.calc}
                       onChange={e => {
+                        if (f.calc) return
                         const v = parseInt(e.target.value.replace(/\D/g, '')) || 0
                         setJv(f.id, v)
                       }}
