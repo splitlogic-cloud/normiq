@@ -182,12 +182,18 @@ function mapSIE(sie: SIEData): MappingData {
 }
 
 function buildBS(sie: SIEData): BSData {
+  // SIE teckenperspektiv (dubbelbokhallning):
+  // Tillgangar 1xxx: positiv UB = debet = tillgang
+  // EK/skulder 2xxx: negativ UB = kredit -> vand tecknet for ARL-presentation
   const al: BSData['al'] = [], ll: BSData['ll'] = []
   for (const [a, v] of Object.entries(sie.accountTotals)) {
     if (Math.abs(v) < 0.01) continue
-    const row = { acc: a, name: sie.accounts[a]?.name || a, amt: Math.round(Math.abs(v)) }
-    if (a >= '1000' && a <= '1999') al.push(row)
-    if (a >= '2000' && a <= '2999') ll.push(row)
+    if (a >= '1000' && a <= '1999') {
+      al.push({ acc: a, name: sie.accounts[a]?.name || a, amt: Math.round(v) })
+    }
+    if (a >= '2000' && a <= '2999') {
+      ll.push({ acc: a, name: sie.accounts[a]?.name || a, amt: Math.round(-v) })
+    }
   }
   return {
     al: al.sort((a, b) => a.acc.localeCompare(b.acc)),
@@ -662,7 +668,7 @@ export default function DeklaraPage() {
                       <div key={l.acc} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', borderBottom: '1px solid #DDD8CF', fontSize: 12 }}>
                         <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginRight: 8, flexShrink: 0 }}>{l.acc}</span>
                         <span style={{ flex: 1, color: '#3A3832' }}>{l.name}</span>
-                        <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, marginLeft: 10 }}>{fmt(l.amt)} kr</span>
+                        <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, marginLeft: 10, color: l.amt < 0 ? '#9A9690' : 'inherit' }}>{l.amt < 0 ? '−' + fmt(Math.abs(l.amt)) : fmt(l.amt)} kr</span>
                       </div>
                     ))}
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 14px', borderBottom: '1px solid #DDD8CF', fontSize: 12, fontWeight: 600, background: '#EDE8DF' }}>
