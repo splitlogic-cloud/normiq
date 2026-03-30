@@ -570,7 +570,7 @@ export default function DeklaraPage() {
       u(7012, sieData?.fiscalYearEnd   || '20251231'),
       u(7023, 'X'),  // Aktiv näring
       verksamhetensArt ? u(7020, verksamhetensArt) : '',  // Verksamhetens art
-      uppdragstagare ? u(7050, 'X') : '',  // Uppdragstagare biträtt
+      // 7050 uppdragstagare — ej giltigt SRU-fält i NE-2025P4, hanteras ej i SRU
 
       // Intäkter (bevarar tecken — negativ intäkt är OK)
       u(7400, fv('R1')),
@@ -1478,7 +1478,7 @@ export default function DeklaraPage() {
                 <input type="checkbox" checked={uppdragstagare} onChange={e => setUppdragstagare(e.target.checked)} style={{ width: 15, height: 15, cursor: 'pointer' }} />
                 <div>
                   <div style={{ fontSize: 13 }}>Uppdragstagare (t.ex. redovisningskonsult) har biträtt vid upprättandet</div>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>SRU: #UPPGIFT 7050 X</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Uppgift för byrån — syns i deklarationsunderlaget</div>
                 </div>
               </div>
 
