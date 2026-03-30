@@ -10,6 +10,7 @@ interface SIEData {
   fiscalYearEnd: string
   accounts: Record<string, { number: string; name: string }>
   accountTotals: Record<string, number>
+  openingBalances: Record<string, number>
 }
 
 interface NEField {
@@ -49,7 +50,7 @@ function parseSIE(txt: string): SIEData {
   const lines = txt.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
   const s: SIEData = {
     companyName: '', orgNumber: '', fiscalYearStart: '', fiscalYearEnd: '',
-    accounts: {}, accountTotals: {},
+    accounts: {}, accountTotals: {}, openingBalances: {},
   }
   const closingBalances: { acc: string; amt: number }[] = []
   const vouchers: { tx: { acc: string; amt: number }[] }[] = []
@@ -69,6 +70,10 @@ function parseSIE(txt: string): SIEData {
         break
       case '#KONTO':
         if (tok[0]) s.accounts[tok[0]] = { number: tok[0], name: unq(tok[1] || '') }
+        break
+      case '#IB':
+        if (parseInt(tok[0] || '0') === 0 && tok[1])
+          s.openingBalances[tok[1]] = (s.openingBalances[tok[1]] || 0) + pf(tok[2] || '0')
         break
       case '#UB': case '#RES':
         if (parseInt(tok[0] || '0') === 0 && tok[1])
@@ -177,8 +182,17 @@ function mapSIE(sie: SIEData): MappingData {
   if ((fields.R14?.value || 0) === 0)
     flags.push({ sev: 'info', msg: 'Inga resekostnader registrerade', detail: 'Har du haft tjänsteresor? Traktamente kan tillkomma.' })
   const avskr = Math.round(Math.abs((sie.accountTotals['7810'] || 0) + (sie.accountTotals['7820'] || 0) + (sie.accountTotals['7830'] || 0)))
+  // Kapitalunderlag för räntefördelning = ingående justerat EK (IB)
+  // = summa 2000-2099 IB-poster, vänd tecknet (kredit = negativt → positivt EK)
+  // Formel: -(2010_IB + 2018_IB + 2099_IB) + 2013_IB = netto EK IB
+  const ibEntries = sie.openingBalances
+  const ibEK2xxx = Object.entries(ibEntries)
+    .filter(([a]) => a >= '2000' && a <= '2099')
+    .reduce((s, [, v]) => s + v, 0)
+  // Negativ summa = positivt EK (kreditkonton). Positiva inslag (uttag 2013) minskar EK.
+  const kapitalunderlag = Math.round(-ibEK2xxx)
   const ekRaw = Object.entries(sie.accountTotals).filter(([a]) => a >= '2000' && a <= '2099').reduce((s, [, v]) => s + v, 0)
-  return { fields, int: Math.round(int), kst: Math.round(kst), bokf: Math.round(bokf), flags, avskr, kapital: Math.round(Math.abs(ekRaw)) }
+  return { fields, int: Math.round(int), kst: Math.round(kst), bokf: Math.round(bokf), flags, avskr, kapital: kapitalunderlag }
 }
 
 function buildBS(sie: SIEData): BSData {
@@ -211,6 +225,8 @@ function calcStep3(base: number, vals: Record<string, number>) {
   const dD = g('useRF') ? g('r20') - g('r19') : 0
   const dE = -Math.min(g('r21'), Math.max(0, base))
   const dF = g('r25') + g('r27') - g('r24') - g('r26')
+  // SLP = särskild löneskatt på pensionssparavdrag 24,26% × R24 (tillägg till överskottet)
+  const dSLP = g('r24') > 0 ? Math.round(g('r24') * 0.2426) : 0
   // §G: medgivna (r28) - påförda (r29). Positiv = drog av för mycket = återföring (ökar överskott). Negativ = extra avdrag.
   const dG = g('r28') - g('r29')
   const dH = g('r31') + g('r32') + g('r33') + g('r34') - g('r35')
@@ -221,7 +237,7 @@ function calcStep3(base: number, vals: Record<string, number>) {
   const hkAvdrag = g('hemmakontor') + g('hemmakontor_internet')
   const dI = -resorAvdrag   // maps to NE R22
   const dJ = -hkAvdrag      // maps to NE R16
-  return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ) }
+  return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, dSLP, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ + dSLP) }
 }
 
 function calcEga(base: number, passiv: boolean, extraNed: number = 0) {
@@ -319,6 +335,20 @@ export default function DeklaraPage() {
   const [parseProgress, setParseProgress] = useState(0)
   const [parseSteps, setParseSteps] = useState<('idle' | 'run' | 'done')[]>(Array(5).fill('idle'))
 
+  // Avstämning — obligatoriska ja/nej-svar innan man kan gå vidare
+  const [avstamning, setAvstamning] = useState<Record<string, 'ja' | 'nej' | null>>({
+    hemmakontor: null,
+    traktamente: null,
+    pension: null,
+    slp: null,
+    sjuklon: null,
+    ega_fg: null,      // medgivna/påförda egenavgifter föregående år (§G)
+    underskott: null,  // outnyttjat underskott från föregående år (§E)
+    pfonder: null,     // periodiseringsfonder att återföra (§B)
+  })
+  const setAv = (k: string, v: 'ja' | 'nej') => setAvstamning(prev => ({ ...prev, [k]: v }))
+  const avstamningKlar = Object.values(avstamning).every(v => v !== null)
+
   // Step 3 fields
   const [j, setJ] = useState<Record<string, number>>({})
   const setJv = (k: string, v: number) => setJ(prev => ({ ...prev, [k]: v }))
@@ -393,6 +423,45 @@ export default function DeklaraPage() {
     runParse(sie, 'demo_2024.se')
   }
 
+  async function downloadPDF() {
+    const f = mapping?.fields || {}
+    const fv = (id: string) => ({ id, label: f[id]?.label || id, value: Math.round(f[id]?.value || 0) })
+    const { blanketter } = generateSRU()
+    const payload = {
+      companyName: sieData?.companyName,
+      orgNumber: sieData?.orgNumber,
+      fiscalYearStart: sieData?.fiscalYearStart,
+      fiscalYearEnd: sieData?.fiscalYearEnd,
+      filename,
+      bokfortOverskott: bokf,
+      skattemassigt,
+      intakter: ['R1','R2','R3'].map(fv).filter(r => r.value > 0),
+      kostnader: ['R10','R11','R12','R13','R14','R15','R16','R17'].map(fv).filter(r => r.value > 0),
+      justeringar: [
+        { code: '§A', label: 'Avskrivningsdiff', value: s3.dA },
+        { code: '§B', label: 'Periodiseringsfond', value: s3.dB },
+        { code: '§C', label: 'Expansionsfond', value: s3.dC },
+        { code: '§D', label: 'Räntefördelning', value: j.useRF ? s3.dD : 0 },
+        { code: '§E', label: 'Underskott', value: s3.dE },
+        { code: '§F', label: 'Pension & sjuklön', value: s3.dF },
+        { code: '§G', label: 'EGA föregående år', value: s3.dG },
+        { code: '§H', label: 'Övriga justeringar', value: s3.dH },
+        { code: 'R22', label: 'Resor & traktamente', value: s3.dI || 0 },
+        { code: 'R16', label: 'Hemmakontor', value: s3.dJ || 0 },
+      ].filter(r => r.value !== 0),
+      ega: { sum: ega.sum, ned: ega.ned, netto: ega.netto, avd25: ega.avd25, slutlig: ega.slutlig, kom: ega.kom, beg: ega.beg, tot: ega.tot },
+      flags: mapping?.flags || [],
+      sruContent: blanketter,
+    }
+    try {
+      const res = await fetch('/api/deklarera/pdf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      if (!res.ok) throw new Error()
+      const blob = await res.blob()
+      const win = window.open(URL.createObjectURL(blob), '_blank')
+      if (win) win.addEventListener('load', () => setTimeout(() => win.print(), 600))
+    } catch { alert('PDF-export misslyckades.') }
+  }
+
   // AI chat
   async function sendMessage(content: string) {
     if (!content.trim()) return
@@ -425,11 +494,18 @@ export default function DeklaraPage() {
     const f = mapping?.fields || {}
     const fv = (id: string) => Math.round(f[id]?.value || 0)
     
-    // Personnr utan bindestreck och med sekelsiffra (19XX eller 20XX)
+    // Personnr: ta bort bindestreck och lägg till sekelsiffra
+    // SIE-format: "750324-7814" (10 tecken med bindestreck = 9 tecken utan = behöver 19/20)
+    // SKV-format: "197503247814" (12 siffror)
     const rawOrg = sieData?.orgNumber || ''
-    const orgClean = rawOrg.replace(/-/g, '')
-    // Lägg till sekelsiffra om den saknas (8 siffror → 10 siffror)
-    const orgFull = orgClean.length === 8 ? (parseInt(orgClean.substring(0,2)) > 20 ? '19' : '20') + orgClean : orgClean
+    const orgClean = rawOrg.replace(/-/g, '').replace(/\+/g, '')  // ta bort - och +
+    // Om 10 siffror → redan med sekelsiffra (organisationsnummer)
+    // Om 9 siffror → personnr utan sekelsiffra → lägg till 19 eller 20
+    // length 10 = personnr utan sekelsiffra (YYMMDDXXXX) → lägg till 19/20
+    // length 12 = redan komplett (YYYYMMDDXXXX eller org.nr med sekelsiffra)
+    const orgFull = orgClean.length === 10
+      ? (parseInt(orgClean.substring(0,2)) <= 25 ? '20' : '19') + orgClean
+      : orgClean
     
     // Framställningsdatum och tid (idag)
     const now = new Date()
@@ -838,8 +914,116 @@ export default function DeklaraPage() {
             <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>Skattemässiga justeringar</h1>
             <div style={{ fontSize: 13, color: '#6A6660', marginBottom: 20 }}>Bokfört resultat justeras till skattemässigt överskott. <span style={{ color: '#2D6A4F' }}>Grön kant</span> = SIE-förifyllt. Allt räknas om live.</div>
 
+            {/* ── AVSTÄMNING ── */}
+            <div style={{ background: '#fff', border: `2px solid ${avstamningKlar ? '#B7D9C8' : '#C0392B'}`, borderRadius: 4, marginBottom: 24, overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px', background: avstamningKlar ? '#EFF7F2' : '#FDF0EE', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${avstamningKlar ? '#B7D9C8' : '#E8C4BF'}` }}>
+                <span style={{ fontSize: 16 }}>{avstamningKlar ? '✓' : '⚠'}</span>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: avstamningKlar ? '#2D6A4F' : '#C0392B' }}>
+                    {avstamningKlar ? 'Avstämning klar — du kan gå vidare' : 'Obligatorisk avstämning — svara på alla frågor nedan'}
+                  </div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2, letterSpacing: '.04em' }}>
+                    Dessa poster är vanliga men missas ofta. Svara Ja eller Nej på varje — ange 0 om det inte är aktuellt.
+                  </div>
+                </div>
+                <div style={{ marginLeft: 'auto', fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690' }}>
+                  {Object.values(avstamning).filter(v => v !== null).length}/{Object.keys(avstamning).length} besvarade
+                </div>
+              </div>
+
+              {[
+                {
+                  key: 'hemmakontor',
+                  icon: '🏠',
+                  title: 'Hemmakontor / arbetsrum i bostaden',
+                  desc: 'Jobbar du hemma i ett rum som används uteslutande för arbete? Avdrag: hyresrätt 4 000 kr/år, bostadsrätt 2 000 kr/år.',
+                  jaAction: () => {},
+                  nejAction: () => setJv('hemmakontor', 0),
+                },
+                {
+                  key: 'traktamente',
+                  icon: '🚗',
+                  title: 'Resor & traktamente',
+                  desc: 'Har du haft tjänsteresor med privat bil (25 kr/mil) eller övernattningar med traktamente (290 kr/dag) som INTE bokförts?',
+                  jaAction: () => {},
+                  nejAction: () => { setJv('resor_mil', 0); setJv('resor_trakt', 0); setJv('resor_trakt_manuell', 0) },
+                },
+                {
+                  key: 'pension',
+                  icon: '🏦',
+                  title: 'Pensionssparande / tjänstepension',
+                  desc: 'Har du betalat in till en IPS, ITPK eller tjänstepension? Avdrag upp till 35% av överskottet (max 573 000 kr) · IL 28:5.',
+                  jaAction: () => {},
+                  nejAction: () => setJv('r24', 0),
+                },
+                {
+                  key: 'slp',
+                  icon: '📋',
+                  title: 'Särskild löneskatt på pensionssparavdrag',
+                  desc: 'Om du gör pensionsavdrag (R24 ovan) ska även särskild löneskatt 24,26% × pensionsavdraget beräknas och ingå i egenavgifterna.',
+                  jaAction: () => {},
+                  nejAction: () => {},
+                },
+                {
+                  key: 'sjuklon',
+                  icon: '🏥',
+                  title: 'Sjuklön & sjukpenning',
+                  desc: 'Har du betalat sjuklön till anställda (R26)? Erhållit sjukpenning eller föräldrapenning från Försäkringskassan (R25, R27)?',
+                  jaAction: () => {},
+                  nejAction: () => { setJv('r25', 0); setJv('r26', 0); setJv('r27', 0) },
+                },
+                {
+                  key: 'ega_fg',
+                  icon: '⚖',
+                  title: 'Egenavgifter föregående år — medgivna vs. påförda (§G)',
+                  desc: 'Förra årets 25%-avdrag (medgivna, R28) jämfört med faktiskt påförda avgifter (R29) på slutskattebeskedet. Differensen justerar årets överskott — positivt om du drog av för mycket, negativt om för lite. Ange 0 om du inte hade egenavgifter förra året.',
+                  jaAction: () => {},
+                  nejAction: () => { setJv('r28', 0); setJv('r29', 0) },
+                },
+                {
+                  key: 'underskott',
+                  icon: '📉',
+                  title: 'Outnyttjat underskott från föregående år (§E)',
+                  desc: 'Gick verksamheten med underskott förra året som inte utnyttjades fullt ut? Det rullas vidare och kan kvittas mot årets överskott. Hämta beloppet från föregående NE-bilaga rad R23 (kvarstående underskott). Ange 0 om inget underskott finns.',
+                  jaAction: () => {},
+                  nejAction: () => setJv('r21', 0),
+                },
+                {
+                  key: 'pfonder',
+                  icon: '🏛',
+                  title: 'Periodiseringsfonder — obligatorisk återföring eller årets avsättning (§B)',
+                  desc: 'Har du kvarvarande periodiseringsfonder som ska återföras (max 6 år, tax.år 2019 är sista)? Vill du sätta av årets resultat i periodiseringsfond (max 30%)? Ange 0 på alla rader om inget är aktuellt.',
+                  jaAction: () => {},
+                  nejAction: () => { setJv('r10', 0); setJv('r11', 0); setJv('r12', 0); setJv('r13', 0) },
+                },
+              ].map((item, idx, arr) => (
+                <div key={item.key} style={{ display: 'grid', gridTemplateColumns: '32px 1fr auto', gap: 12, padding: '13px 16px', borderBottom: idx < arr.length - 1 ? `1px solid ${avstamning[item.key] ? '#DDD8CF' : '#F0E8E8'}` : 'none', background: avstamning[item.key] === null ? '#FFFAFA' : '#fff', alignItems: 'start' }}>
+                  <span style={{ fontSize: 20, marginTop: 1 }}>{item.icon}</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A18', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
+                      {item.title}
+                      {avstamning[item.key] === null && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', background: '#FDF0EE', border: '1px solid #E8C4BF', padding: '1px 6px', letterSpacing: '.06em' }}>OBLIGATORISK</span>}
+                      {avstamning[item.key] === 'ja' && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#2D6A4F', background: '#EFF7F2', border: '1px solid #B7D9C8', padding: '1px 6px' }}>JA — fyll i nedan</span>}
+                      {avstamning[item.key] === 'nej' && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#9A9690', background: '#F5F0E8', border: '1px solid #DDD8CF', padding: '1px 6px' }}>NEJ — nollas</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#6A6660', lineHeight: 1.55 }}>{item.desc}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 2 }}>
+                    <button
+                      onClick={() => { setAv(item.key, 'ja'); item.jaAction() }}
+                      style={{ padding: '5px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', border: '1px solid', borderRadius: 2, letterSpacing: '.04em', background: avstamning[item.key] === 'ja' ? '#2D6A4F' : '#fff', color: avstamning[item.key] === 'ja' ? '#fff' : '#3A3832', borderColor: avstamning[item.key] === 'ja' ? '#2D6A4F' : '#C8C3BA', fontWeight: avstamning[item.key] === 'ja' ? 600 : 400 }}
+                    >Ja</button>
+                    <button
+                      onClick={() => { setAv(item.key, 'nej'); item.nejAction() }}
+                      style={{ padding: '5px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', border: '1px solid', borderRadius: 2, letterSpacing: '.04em', background: avstamning[item.key] === 'nej' ? '#6A6660' : '#fff', color: avstamning[item.key] === 'nej' ? '#fff' : '#3A3832', borderColor: avstamning[item.key] === 'nej' ? '#6A6660' : '#C8C3BA', fontWeight: avstamning[item.key] === 'nej' ? 600 : 400 }}
+                    >Nej</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {/* Summary */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)'}}, gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
               {[{ l: 'Bokfört', v: fmt(bokf) + ' kr' }, { l: 'Avskr.', v: sgn(s3.dA) }, { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + (j.useRF ? s3.dD : 0)) }, { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH + (s3.dI||0) + (s3.dJ||0)) }, { l: 'Skattemässigt', v: fmt(skattemassigt) + ' kr' }].map(s => (
                 <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
@@ -977,7 +1161,7 @@ export default function DeklaraPage() {
 
             {/* Calc summary */}
             <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, marginTop: 20, overflow: 'hidden' }}>
-              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: sgn(s3.dD) }, { l: '§D Räntefördelning', v: j.useRF ? sgn(s3.dD) : '—' }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }, { l: '§I Resor & traktamente', v: sgn(s3.dI||0) }, { l: '§J Hemmakontor', v: sgn(s3.dJ||0) }].map((row, i) => (
+              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: sgn(s3.dD) }, { l: '§D Räntefördelning', v: j.useRF ? sgn(s3.dD) : '—' }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }, { l: '§I Resor & traktamente', v: sgn(s3.dI||0) }, { l: '§J Hemmakontor', v: sgn(s3.dJ||0) }, { l: 'SLP Pens.avgift', v: (s3.dSLP||0) > 0 ? sgn(s3.dSLP||0) : '—' }].map((row, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #DDD8CF', fontSize: 13 }}>
                   <span style={{ color: '#6A6660' }}>{row.l}</span>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500 }}>{row.v}</span>
@@ -1019,7 +1203,10 @@ export default function DeklaraPage() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 22, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button onClick={() => nav(5)} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Beräkna egenavgifter →</button>
+              <button
+                onClick={() => { if (!avstamningKlar) { alert('Svara på alla avstämningsfrågor innan du går vidare.'); return } nav(5) }}
+                style={{ padding: '10px 20px', background: avstamningKlar ? '#1A1A18' : '#C8C3BA', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: avstamningKlar ? 'pointer' : 'not-allowed', borderRadius: 2, fontFamily: 'inherit' }}
+              >{avstamningKlar ? 'Beräkna egenavgifter →' : '⚠ Slutför avstämning först'}</button>
               <button onClick={() => openDrawer(`Analysera mina justeringar. Bokfört överskott: ${fmt(bokf)} kr. Optimera periodiseringsfond och räntefördelning.`)} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Fråga Normiq</button>
               <button onClick={() => nav(3)} style={{ background: 'none', border: 'none', fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#9A9690', cursor: 'pointer', letterSpacing: '.06em' }}>← Tillbaka</button>
             </div>
@@ -1198,6 +1385,7 @@ export default function DeklaraPage() {
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button onClick={downloadSRU} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>↓ Ladda ner BLANKETTER.SRU + INFO.SRU</button>
+              <button onClick={downloadPDF} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>↓ PDF-underlag (öppnas för utskrift)</button>
               <button onClick={() => openDrawer('Finns det något sista jag bör kontrollera innan jag lämnar in deklarationen?')} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Sista granskning med Normiq</button>
             </div>
             <div style={{ marginTop: 24, padding: '10px 14px', background: '#FDF5E6', border: '1px solid #E8D4A0', borderRadius: 2, fontSize: 12, color: '#92620A', lineHeight: 1.65 }}>
