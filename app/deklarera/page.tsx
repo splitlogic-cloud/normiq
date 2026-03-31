@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { createBrowserClient } from '@supabase/ssr'
 
 // ─── Types ───────────────────────────────────
 interface SIEData {
@@ -460,7 +460,10 @@ export default function DeklaraPage() {
   const setJv = (k: string, v: number) => setJ(prev => ({ ...prev, [k]: v }))
 
   // Supabase
-  const supabase = createClient()
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   // Deklaration history
   const [deklarationId, setDeklarationId] = useState<string | null>(null)

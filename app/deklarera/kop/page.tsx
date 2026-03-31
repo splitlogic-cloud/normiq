@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 
 // ─── Villkorsgodkännande ──────────────────────────────────────
@@ -80,7 +80,10 @@ export default function DeklareraPricingPage() {
     setError(null)
 
     try {
-      const supabase = createClient()
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { router.push('/login?redirect=/deklarera/kop'); return }
 
