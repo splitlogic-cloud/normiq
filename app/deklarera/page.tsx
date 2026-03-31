@@ -664,7 +664,7 @@ export default function DeklaraPage() {
     
     // BLANKETTER.SRU
     const blanketter = [
-      '#BLANKETT NE-2026P4',
+      '#BLANKETT NE-2025P4',
       `#IDENTITET ${orgFull} ${dateFmt} ${timeFmt}`,
       sieData?.companyName ? `#NAMN ${sieData.companyName}` : '',
       '',
