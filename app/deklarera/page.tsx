@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 // ─── Types ───────────────────────────────────
 interface SIEData {
@@ -241,9 +242,11 @@ function calcStep3(base: number, vals: Record<string, number>) {
   // §G: medgivna (r28) - påförda (r29). Positiv = drog av för mycket = återföring (ökar överskott). Negativ = extra avdrag.
   const dG = g('r28') - g('r29')
   const dH = g('r31') + g('r32') + g('r33') + g('r34') - g('r35')
-  // Resor & traktamente → R22 (övriga skattemässiga justeringar, kostnader ej bokförda)
+  // Resor & traktamente → R22
   const trakt = g('resor_trakt_manuell') > 0 ? g('resor_trakt_manuell') : g('resor_trakt') * 290
-  const resorAvdrag = g('resor_mil') * 25 + trakt
+  // Utlandstraktamente — summa från alla rader i utlandResor (injicerat som utland_totalt)
+  const utlandAvdrag = g('utland_totalt')
+  const resorAvdrag = g('resor_mil') * 25 + trakt + utlandAvdrag
   // Hemmakontor → R16 (kostnader som inte bokförts men ska dras av)
   const hkAvdrag = g('hemmakontor') + g('hemmakontor_internet')
   const dI = -resorAvdrag   // maps to NE R22
@@ -319,6 +322,75 @@ const DEMO_SIE = `#FLAGGA 0
 #UB 0 2440 -28000
 #UB 0 2500 -15000`
 
+// ─── Utlandstraktamente normalbelopp 2025 (SKV) ──────────────
+const UTLAND_NORMALBELOPP: { land: string; belopp: number }[] = [
+  { land: 'Albanien', belopp: 351 }, { land: 'Algeriet', belopp: 334 },
+  { land: 'Angola', belopp: 540 }, { land: 'Argentina', belopp: 388 },
+  { land: 'Armenien', belopp: 469 }, { land: 'Australien', belopp: 727 },
+  { land: 'Azerbajdzjan', belopp: 437 }, { land: 'Bahamas', belopp: 1146 },
+  { land: 'Bahrain', belopp: 881 }, { land: 'Bangladesh', belopp: 399 },
+  { land: 'Barbados', belopp: 930 }, { land: 'Belarus', belopp: 300 },
+  { land: 'Belgien', belopp: 897 }, { land: 'Belize', belopp: 591 },
+  { land: 'Bolivia', belopp: 406 }, { land: 'Bosnien-Hercegovina', belopp: 355 },
+  { land: 'Botswana', belopp: 358 }, { land: 'Brasilien', belopp: 376 },
+  { land: 'Bulgarien', belopp: 459 }, { land: 'Burkina Faso', belopp: 421 },
+  { land: 'Chile', belopp: 479 }, { land: 'Colombia', belopp: 378 },
+  { land: 'Costa Rica', belopp: 677 }, { land: 'Cypern', belopp: 601 },
+  { land: 'Danmark', belopp: 1226 }, { land: 'Djibouti', belopp: 619 },
+  { land: 'Dominikanska republiken', belopp: 457 }, { land: 'Ecuador', belopp: 573 },
+  { land: 'Egypten', belopp: 300 }, { land: 'El Salvador', belopp: 462 },
+  { land: 'Estland', belopp: 683 }, { land: 'Etiopien', belopp: 300 },
+  { land: 'Fiji', belopp: 415 }, { land: 'Filippinerna', belopp: 466 },
+  { land: 'Finland', belopp: 968 }, { land: 'Frankrike', belopp: 850 },
+  { land: 'Franska Polynesien', belopp: 926 }, { land: 'Förenade Arabemiraten', belopp: 883 },
+  { land: 'Gabon', belopp: 650 }, { land: 'Georgien', belopp: 331 },
+  { land: 'Ghana', belopp: 580 }, { land: 'Grekland', belopp: 746 },
+  { land: 'Guatemala', belopp: 561 }, { land: 'Guinea', belopp: 658 },
+  { land: 'Honduras', belopp: 423 }, { land: 'Hong Kong', belopp: 895 },
+  { land: 'Indien', belopp: 300 }, { land: 'Indonesien', belopp: 418 },
+  { land: 'Irak', belopp: 590 }, { land: 'Irland', belopp: 1038 },
+  { land: 'Island', belopp: 1125 }, { land: 'Israel', belopp: 956 },
+  { land: 'Italien', belopp: 802 }, { land: 'Jamaica', belopp: 425 },
+  { land: 'Japan', belopp: 386 }, { land: 'Jordanien', belopp: 803 },
+  { land: 'Kambodja', belopp: 532 }, { land: 'Kamerun', belopp: 524 },
+  { land: 'Kanada', belopp: 895 }, { land: 'Kazakstan', belopp: 353 },
+  { land: 'Kenya', belopp: 472 }, { land: 'Kina', belopp: 581 },
+  { land: 'Kroatien', belopp: 550 }, { land: 'Kuba', belopp: 587 },
+  { land: 'Kuwait', belopp: 849 }, { land: 'Lettland', belopp: 763 },
+  { land: 'Liberia', belopp: 649 }, { land: 'Liechtenstein', belopp: 1120 },
+  { land: 'Litauen', belopp: 635 }, { land: 'Luxemburg', belopp: 953 },
+  { land: 'Malaysia', belopp: 319 }, { land: 'Maldiverna', belopp: 503 },
+  { land: 'Mali', belopp: 488 }, { land: 'Malta', belopp: 659 },
+  { land: 'Marocko', belopp: 507 }, { land: 'Mexiko', belopp: 562 },
+  { land: 'Moldova', belopp: 414 }, { land: 'Monaco', belopp: 1073 },
+  { land: 'Montenegro', belopp: 391 }, { land: 'Myanmar', belopp: 367 },
+  { land: 'Namibia', belopp: 300 }, { land: 'Nederländerna', belopp: 745 },
+  { land: 'Nepal', belopp: 300 }, { land: 'Nicaragua', belopp: 469 },
+  { land: 'Niger', belopp: 394 }, { land: 'Nordmakedonien', belopp: 312 },
+  { land: 'Norge', belopp: 1054 }, { land: 'Nya Zeeland', belopp: 525 },
+  { land: 'Oman', belopp: 822 }, { land: 'Pakistan', belopp: 300 },
+  { land: 'Panama', belopp: 673 }, { land: 'Paraguay', belopp: 349 },
+  { land: 'Peru', belopp: 482 }, { land: 'Polen', belopp: 597 },
+  { land: 'Portugal', belopp: 616 }, { land: 'Puerto Rico', belopp: 701 },
+  { land: 'Qatar', belopp: 837 }, { land: 'Rumänien', belopp: 414 },
+  { land: 'Ryssland', belopp: 661 }, { land: 'Saudiarabien', belopp: 1016 },
+  { land: 'Schweiz', belopp: 1332 }, { land: 'Senegal', belopp: 626 },
+  { land: 'Serbien', belopp: 533 }, { land: 'Seychellerna', belopp: 846 },
+  { land: 'Singapore', belopp: 845 }, { land: 'Slovakien', belopp: 737 },
+  { land: 'Slovenien', belopp: 574 }, { land: 'Spanien', belopp: 635 },
+  { land: 'Sri Lanka', belopp: 424 }, { land: 'Storbritannien', belopp: 901 },
+  { land: 'Sydafrika', belopp: 349 }, { land: 'Sydkorea', belopp: 517 },
+  { land: 'Taiwan', belopp: 554 }, { land: 'Tanzania', belopp: 331 },
+  { land: 'Thailand', belopp: 521 }, { land: 'Tjeckien', belopp: 695 },
+  { land: 'Trinidad och Tobago', belopp: 801 }, { land: 'Tunisien', belopp: 300 },
+  { land: 'Turkiet', belopp: 366 }, { land: 'Turkmenistan', belopp: 1454 },
+  { land: 'Tyskland', belopp: 760 }, { land: 'Uganda', belopp: 446 },
+  { land: 'Ukraina', belopp: 300 }, { land: 'Ungern', belopp: 679 },
+  { land: 'Uruguay', belopp: 595 }, { land: 'USA', belopp: 1049 },
+  { land: 'Vietnam', belopp: 328 }, { land: 'Zambia', belopp: 384 },
+  { land: 'Österrike', belopp: 730 }, { land: 'Övriga länder', belopp: 493 },
+]
+
 // ─── Accordion Component ─────────────────────
 function Accordion({ code, name, sum, children }: { code: string; name: string; sum: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(true)
@@ -368,12 +440,32 @@ export default function DeklaraPage() {
   const [uppdragstagare, setUppdragstagare] = useState<boolean>(false)
   const [saknarTillgangar, setSaknarTillgangar] = useState<boolean>(false)
 
+  // Utlandstraktamente — flera länder/resor
+  const [utlandResor, setUtlandResor] = useState<{ land: number; dagar: number; halvdagar: number }[]>([])
+  const addUtland = () => setUtlandResor(prev => [...prev, { land: 0, dagar: 0, halvdagar: 0 }])
+  const removeUtland = (i: number) => setUtlandResor(prev => prev.filter((_, idx) => idx !== i))
+  const updateUtland = (i: number, key: string, val: number) =>
+    setUtlandResor(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r))
+  const utlandTotalt = utlandResor.reduce((sum, r) => {
+    if (!r.land) return sum
+    const nb = UTLAND_NORMALBELOPP[r.land - 1]?.belopp || 0
+    return sum + Math.round(nb * r.dagar + nb * 0.5 * r.halvdagar)
+  }, 0)
+
   // Skattesatser
   const [kommunalskatt, setKommunalskatt] = useState<number>(32.0)  // schabloon, justerbar
 
   // Step 3 fields
   const [j, setJ] = useState<Record<string, number>>({})
   const setJv = (k: string, v: number) => setJ(prev => ({ ...prev, [k]: v }))
+
+  // Supabase
+  const supabase = createClient()
+
+  // Deklaration history
+  const [deklarationId, setDeklarationId] = useState<string | null>(null)
+  const [historik, setHistorik] = useState<{id:string;inkomstar:number;company_name:string;org_number:string;status:string;updated_at:string}[]>([])
+  const [saving, setSaving] = useState(false)
 
   // Step 5
   const [passiv, setPassiv] = useState(false)
@@ -397,9 +489,11 @@ export default function DeklaraPage() {
 
   // Derived values
   const bokf = mapping?.bokf || 0
-  const s3 = calcStep3(bokf, j)
+  // Inject utlandTotalt into j for calcStep3
+  const jWithUtland = { ...j, utland_totalt: utlandTotalt }
+  const s3 = calcStep3(bokf, jWithUtland)
   const skattemassigt = j.useManual ? (j.manualOverskott || 0) : s3.tot
-  const ega = calcEga(skattemassigt, passiv, extraNed, kommunalskatt)
+  const ega = calcEga(skattemassigt, passiv, extraNed, kommunalskatt)  // utlandTotalt added via j
 
   // Parse flow
   async function runParse(sie: SIEData, fname: string) {
@@ -447,7 +541,7 @@ export default function DeklaraPage() {
   function loadDemo() {
     const sie = parseSIE(DEMO_SIE)
     setSieData(sie)
-    runParse(sie, 'demo_2024.se')
+    runParse(sie, 'demo_2025.se')
   }
 
   async function downloadPDF() {
@@ -561,7 +655,7 @@ export default function DeklaraPage() {
     
     // BLANKETTER.SRU
     const blanketter = [
-      '#BLANKETT NE-2025P4',
+      '#BLANKETT NE-2026P4',
       `#IDENTITET ${orgFull} ${dateFmt} ${timeFmt}`,
       sieData?.companyName ? `#NAMN ${sieData.companyName}` : '',
       '',
@@ -570,7 +664,7 @@ export default function DeklaraPage() {
       u(7012, sieData?.fiscalYearEnd   || '20251231'),
       u(7023, 'X'),  // Aktiv näring
       verksamhetensArt ? u(7020, verksamhetensArt) : '',  // Verksamhetens art
-      // 7050 uppdragstagare — ej giltigt SRU-fält i NE-2025P4, hanteras ej i SRU
+      // 7050 uppdragstagare — ej giltigt SRU-fält i NE-2026P4, hanteras ej i SRU
 
       // Intäkter (bevarar tecken — negativ intäkt är OK)
       u(7400, fv('R1')),
@@ -685,6 +779,84 @@ export default function DeklaraPage() {
     }, 500)
   }
 
+  // ── Load historik ─────────────────────────────
+  const loadHistorik = useCallback(async () => {
+    const { data } = await supabase
+      .from('deklarationer')
+      .select('id, inkomstar, company_name, org_number, status, updated_at')
+      .order('inkomstar', { ascending: false })
+      .order('updated_at', { ascending: false })
+    if (data) setHistorik(data)
+  }, [supabase])
+
+  useEffect(() => { loadHistorik() }, [loadHistorik])
+
+  // ── Save deklaration ───────────────────────────
+  const saveDeklaration = async () => {
+    if (!sieData) return
+    setSaving(true)
+    const inkomstar = parseInt(sieData.fiscalYearStart.substring(0, 4)) || 2025
+    const state = {
+      j, utlandResor, avstamning, passiv, extraNed, kommunalskatt,
+      verksamhetensArt, uppdragstagare, saknarTillgangar,
+      mappingData: mapping, bsData: bs,
+      sieCompanyName: sieData.companyName,
+      sieOrgNumber: sieData.orgNumber,
+      sieFiscalYearStart: sieData.fiscalYearStart,
+      sieFiscalYearEnd: sieData.fiscalYearEnd,
+    }
+    const { blanketter, info } = generateSRU()
+    const payload = {
+      inkomstar,
+      company_name: sieData.companyName,
+      org_number: sieData.orgNumber,
+      sie_filename: filename,
+      state,
+      sru_blanketter: blanketter,
+      sru_info: info,
+    }
+    if (deklarationId) {
+      await supabase.from('deklarationer').update({ ...payload, status: 'utkast' }).eq('id', deklarationId)
+    } else {
+      const { data } = await supabase.from('deklarationer').insert(payload).select('id').single()
+      if (data) setDeklarationId(data.id)
+    }
+    setSaving(false)
+    loadHistorik()
+  }
+
+  // ── Load saved deklaration ─────────────────────
+  const loadDeklaration = async (id: string) => {
+    const { data } = await supabase.from('deklarationer').select('*').eq('id', id).single()
+    if (!data) return
+    const s = data.state as Record<string, unknown>
+    if (s.j) setJ(s.j as Record<string, number>)
+    if (s.utlandResor) setUtlandResor(s.utlandResor as {land:number;dagar:number;halvdagar:number}[])
+    if (s.avstamning) setAvstamning(s.avstamning as Record<string, 'ja'|'nej'|null>)
+    if (typeof s.passiv === 'boolean') setPassiv(s.passiv)
+    if (typeof s.extraNed === 'number') setExtraNed(s.extraNed)
+    if (typeof s.kommunalskatt === 'number') setKommunalskatt(s.kommunalskatt)
+    if (typeof s.verksamhetensArt === 'string') setVerksamhetensArt(s.verksamhetensArt)
+    if (typeof s.uppdragstagare === 'boolean') setUppdragstagare(s.uppdragstagare)
+    if (typeof s.saknarTillgangar === 'boolean') setSaknarTillgangar(s.saknarTillgangar)
+    // Restore SIE data
+    if (s.mappingData) setMapping(s.mappingData as MappingData)
+    if (s.bsData) setBS(s.bsData as BSData)
+    if (data.sie_filename) setFilename(data.sie_filename)
+    // Reconstruct minimal SIEData for display
+    setSieData({
+      companyName: data.company_name || '',
+      orgNumber: data.org_number || '',
+      fiscalYearStart: (s.sieFiscalYearStart as string) || '',
+      fiscalYearEnd: (s.sieFiscalYearEnd as string) || '',
+      accounts: {},
+      accountTotals: {},
+      openingBalances: {},
+    })
+    setDeklarationId(id)
+    nav(2)
+  }
+
   const nav = (n: number) => {
     if (n === 5) { setStep(5 as Step) }
     else setStep(n as Step)
@@ -707,7 +879,7 @@ export default function DeklaraPage() {
       {/* ── SIDEBAR ── */}
       <aside style={{ width: 240, background: '#fff', borderRight: '1px solid #DDD8CF', padding: '24px 0', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto', flexShrink: 0 }}>
         <div style={{ padding: '0 20px', marginBottom: 4, fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700 }}>Deklarera NE</div>
-        <div style={{ padding: '0 20px', fontSize: 11, color: '#9A9690', marginBottom: 20 }}>Taxeringsår 2025 · Inkomstår 2024</div>
+        <div style={{ padding: '0 20px', fontSize: 11, color: '#9A9690', marginBottom: 20 }}>Taxeringsår 2026 · Inkomstår 2025</div>
 
         {filename && (
           <div style={{ margin: '0 16px 16px', padding: '10px 14px', background: '#F5F0E8', border: '1px solid #DDD8CF', borderRadius: 4 }}>
@@ -749,6 +921,24 @@ export default function DeklaraPage() {
             </div>
           )
         })}
+
+        {/* Historik — tidigare sparade deklarationer */}
+        {historik.length > 0 && (<>
+          <div style={{ height: 1, background: '#DDD8CF', margin: '8px 20px' }} />
+          <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9A9690', padding: '8px 20px 4px' }}>Tidigare år</div>
+          {historik.map(d => (
+            <div key={d.id} onClick={() => loadDeklaration(d.id)}
+              style={{ padding: '8px 20px', cursor: 'pointer', borderLeft: deklarationId === d.id ? '2px solid #C0392B' : '2px solid transparent', background: deklarationId === d.id ? '#F5F0E8' : 'transparent', transition: 'all .12s' }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: '#1A1A18' }}>Inkomstår {d.inkomstar}</div>
+              <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 1 }}>
+                {d.company_name || d.org_number} ·{' '}
+                <span style={{ color: d.status === 'inlamnad' ? '#2D6A4F' : d.status === 'klar' ? '#92620A' : '#9A9690' }}>
+                  {d.status === 'inlamnad' ? 'Inlämnad ✓' : d.status === 'klar' ? 'Klar' : 'Utkast'}
+                </span>
+              </div>
+            </div>
+          ))}
+        </>)}
 
         <div style={{ height: 1, background: '#DDD8CF', margin: '16px 20px' }} />
         <div style={{ padding: '0 20px' }}>
@@ -824,7 +1014,7 @@ export default function DeklaraPage() {
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav(1)}>← TILLBAKA</div>
             <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>Resultaträkning</h1>
             <div style={{ display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-              {['NE AVSNITT A–B', 'INKOMSTÅR 2024'].map(t => <span key={t} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, padding: '3px 9px', border: '1px solid #C8C3BA', color: '#6A6660', letterSpacing: '.06em' }}>{t}</span>)}
+              {['NE AVSNITT A–B', 'INKOMSTÅR 2025'].map(t => <span key={t} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, padding: '3px 9px', border: '1px solid #C8C3BA', color: '#6A6660', letterSpacing: '.06em' }}>{t}</span>)}
               <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, padding: '3px 9px', border: '1px solid #B7D9C8', color: '#2D6A4F', background: '#EFF7F2', letterSpacing: '.04em' }}>✓ Mappat från {filename}</span>
             </div>
 
@@ -1187,7 +1377,7 @@ export default function DeklaraPage() {
                         {/* ── RESOR & TRAKTAMENTE ── */}
             <Accordion code="NE R22" name="Resor & traktamente — ej bokförda kostnader (R22)" sum={sgn(s3.dI||0)}>
               <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
-                Milersättning för tjänsteresor med privat bil: <strong>25 kr/mil</strong> (2024). Traktamente inrikes helpension: <strong>290 kr/dag</strong>. Dessa läggs som avdrag om de inte redan bokförts som kostnad.
+                Milersättning för tjänsteresor med privat bil: <strong>25 kr/mil</strong> (2025). Traktamente inrikes helpension: <strong>290 kr/dag</strong>. Dessa läggs som avdrag om de inte redan bokförts som kostnad.
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                 <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>MIL</span>
@@ -1209,10 +1399,65 @@ export default function DeklaraPage() {
                 <div><div style={{ fontSize: 13, color: '#3A3832' }}>Traktamentsavdrag (290 kr × dagar)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto beräknat</div></div>
                 <input readOnly value={Math.round((j.resor_trakt||0)*290)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                 <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>MAN</span>
                 <div><div style={{ fontSize: 13, color: '#3A3832' }}>Traktamente — manuellt totalbelopp (åsidosätter dagar × 290)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Fyll i om du har exakt belopp från reseräkning</div></div>
                 <input type="number" value={j.resor_trakt_manuell || 0} onChange={e => setJv('resor_trakt_manuell', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: (j.resor_trakt_manuell||0)>0 ? '#EFF7F2' : '#F5F0E8', border: `1px solid ${(j.resor_trakt_manuell||0)>0 ? '#B7D9C8' : '#C8C3BA'}`, color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+              </div>
+
+              {/* Utlandstraktamente — flera länder */}
+              <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
+                Utlandstraktamente 2025 (SKV normalbelopp). Enskild firma: upp till 1 månads tjänsteresa per land.
+                Lägg till en rad per land/resa. Halvdag = avresa efter kl 12 eller hemresa före kl 19.
+              </div>
+
+              {/* Header row */}
+              {utlandResor.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 90px 28px', gap: 6, padding: '6px 14px', background: '#EDE8DF', borderBottom: '1px solid #DDD8CF' }}>
+                  {['Land (normalbelopp/dag)', 'Heldagar', 'Halvdagar', 'Avdrag', ''].map(h => (
+                    <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#9A9690' }}>{h}</div>
+                  ))}
+                </div>
+              )}
+
+              {utlandResor.map((resa, i) => {
+                const nb = resa.land > 0 ? UTLAND_NORMALBELOPP[resa.land - 1] : null
+                const avdrag = nb ? Math.round(nb.belopp * resa.dagar + nb.belopp * 0.5 * resa.halvdagar) : 0
+                return (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 90px 28px', gap: 6, padding: '8px 14px', borderBottom: '1px solid #DDD8CF', alignItems: 'center' }}>
+                    <select
+                      value={resa.land}
+                      onChange={e => updateUtland(i, 'land', parseInt(e.target.value))}
+                      style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, padding: '5px 6px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', borderRadius: 2, outline: 'none', width: '100%' }}
+                    >
+                      <option value={0}>— Välj land —</option>
+                      {UTLAND_NORMALBELOPP.map((l, li) => (
+                        <option key={li} value={li + 1}>{l.land} ({l.belopp} kr)</option>
+                      ))}
+                    </select>
+                    <input type="number" min={0} value={resa.dagar}
+                      onChange={e => updateUtland(i, 'dagar', parseInt(e.target.value)||0)}
+                      style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '5px 8px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', textAlign: 'right', outline: 'none', borderRadius: 2, width: '100%' }} />
+                    <input type="number" min={0} value={resa.halvdagar}
+                      onChange={e => updateUtland(i, 'halvdagar', parseInt(e.target.value)||0)}
+                      style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '5px 8px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', textAlign: 'right', outline: 'none', borderRadius: 2, width: '100%' }} />
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, color: avdrag > 0 ? '#2D6A4F' : '#9A9690', textAlign: 'right', padding: '0 4px' }}>
+                      {avdrag > 0 ? fmt(avdrag) : '—'}
+                    </div>
+                    <button onClick={() => removeUtland(i)} style={{ background: 'none', border: '1px solid #DDD8CF', borderRadius: 2, color: '#C0392B', cursor: 'pointer', fontSize: 14, lineHeight: 1, padding: '3px 6px' }}>×</button>
+                  </div>
+                )
+              })}
+
+              {/* Add row + total */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px' }}>
+                <button onClick={addUtland} style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, padding: '6px 14px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#3A3832', cursor: 'pointer', borderRadius: 2, letterSpacing: '.06em' }}>+ Lägg till land/resa</button>
+                {utlandTotalt > 0 && (
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
+                    <span style={{ color: '#9A9690' }}>Totalt utlandstraktamente: </span>
+                    <strong style={{ color: '#2D6A4F' }}>{fmt(utlandTotalt)} kr</strong>
+                  </div>
+                )}
               </div>
             </Accordion>
 
@@ -1357,9 +1602,9 @@ export default function DeklaraPage() {
             </Accordion>
 
             {/* Spec */}
-            <Accordion code="EGA §2" name="Specifikation egenavgifter 2024" sum={fmt(ega.sum) + ' kr'}>
+            <Accordion code="EGA §2" name="Specifikation egenavgifter 2025" sum={fmt(ega.sum) + ' kr'}>
               <table style={{ width: '100%', borderCollapse: 'collapse', margin: '4px 0' }}>
-                <thead><tr>{['Avgift','Sats 2024','Belopp'].map(h => <th key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#9A9690', padding: '7px 14px', borderBottom: '1px solid #DDD8CF', textAlign: h === 'Belopp' ? 'right' : 'left', fontWeight: 400, background: '#EDE8DF' }}>{h}</th>)}</tr></thead>
+                <thead><tr>{['Avgift','Sats 2025','Belopp'].map(h => <th key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#9A9690', padding: '7px 14px', borderBottom: '1px solid #DDD8CF', textAlign: h === 'Belopp' ? 'right' : 'left', fontWeight: 400, background: '#EDE8DF' }}>{h}</th>)}</tr></thead>
                 <tbody>
                   {[['Ålderspensionsavgift','10,21%', fmt(Math.round(skattemassigt*0.1021))+' kr'], ['Sjukförsäkringsavgift','3,64%', fmt(Math.round(skattemassigt*0.0364))+' kr'], ['Föräldraförsäkringsavgift','2,60%', fmt(Math.round(skattemassigt*0.026))+' kr'], ['Efterlevandepensionsavgift','0,60%', fmt(Math.round(skattemassigt*0.006))+' kr'], ['Arbetsskadeavgift','0,20%', fmt(Math.round(skattemassigt*0.002))+' kr'], ['Arbetsmarknadsavgift','0,00%','0 kr'], ['Allmän löneavgift','11,62%', fmt(Math.round(skattemassigt*0.1162))+' kr']].map(([name, rate, amt]) => (
                     <tr key={name} style={{ borderBottom: '1px solid #DDD8CF' }}>
@@ -1410,7 +1655,7 @@ export default function DeklaraPage() {
 
             {/* Skatteuträkning */}
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#9A9690', margin: '22px 0 10px', display: 'flex', alignItems: 'center', gap: 9 }}>
-              <span>Skatteuträkning 2024</span>
+              <span>Skatteuträkning 2025</span>
               <div style={{ flex: 1, height: 1, background: '#DDD8CF' }} />
             </div>
             <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, overflow: 'hidden', marginBottom: 18 }}>
@@ -1437,7 +1682,7 @@ export default function DeklaraPage() {
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', background: '#EDE8DF', borderTop: '2px solid #C8C3BA' }}>
-                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700 }}>Total skatt & avgifter 2024</span>
+                <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 15, fontWeight: 700 }}>Total skatt & avgifter 2025</span>
                 <span style={{ fontFamily: "'Playfair Display', serif", fontSize: 18, fontWeight: 700, color: '#C0392B' }}>{fmt(ega.tot)} kr</span>
               </div>
             </div>
@@ -1544,6 +1789,15 @@ export default function DeklaraPage() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {sieData && (
+                <button
+                  onClick={saveDeklaration}
+                  disabled={saving}
+                  style={{ padding: '10px 16px', background: saving ? '#EDE8DF' : '#2D6A4F', color: saving ? '#9A9690' : '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: saving ? 'default' : 'pointer', borderRadius: 2, fontFamily: 'inherit' }}
+                >
+                  {saving ? 'Sparar...' : deklarationId ? '✓ Spara ändringar' : '↑ Spara deklaration'}
+                </button>
+              )}
               <button onClick={downloadSRU} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>↓ Ladda ner BLANKETTER.SRU + INFO.SRU</button>
               <button onClick={downloadPDF} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>↓ PDF-underlag (öppnas för utskrift)</button>
               <button onClick={() => openDrawer('Finns det något sista jag bör kontrollera innan jag lämnar in deklarationen?')} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Sista granskning med Normiq</button>
