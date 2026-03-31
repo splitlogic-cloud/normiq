@@ -913,12 +913,12 @@ export default function DeklaraPage() {
 
   // ── Render ─────────────────────────────────
   const STEPS = [
-    { n: 1, label: 'SIE-import',         sub: 'Ladda upp SIE-fil' },
-    { n: 2, label: 'Resultaträkning',     sub: 'NE avsnitt A–B' },
-    { n: 3, label: 'Balansräkning',       sub: 'Tillgångar & skulder' },
-    { n: 4, label: 'Justeringar',         sub: 'NE §A–§H' },
-    { n: 5, label: 'Egenavgifter',        sub: 'EGA §1–§4 + skatt' },
-    { n: 6, label: 'Granska & exportera', sub: 'SRU-fil + PDF' },
+    { n: 1, label: 'Din bokföring',        sub: 'Ladda upp SIE-fil från ditt program' },
+    { n: 2, label: 'Intäkter & kostnader', sub: 'Vi kontrollerar siffrorna' },
+    { n: 3, label: 'Tillgångar & skulder', sub: 'Balansräkning vid årets slut' },
+    { n: 4, label: 'Avdrag & justeringar', sub: 'Hemmakontor, resor, pension...' },
+    { n: 5, label: 'Din skatt',            sub: 'Egenavgifter och kommunalskatt' },
+    { n: 6, label: 'Klar att skicka in',   sub: 'Ladda ner SRU-fil till Skatteverket' },
   ]
 
   if (authLoading) return (
@@ -1043,10 +1043,44 @@ export default function DeklaraPage() {
         {step === 1 && (
           <div style={{ maxWidth: 600, padding: '48px 36px 60px' }}>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#C0392B', marginBottom: 10 }}>Normiq Deklarera · Blankett NE</div>
-            <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 38, fontWeight: 700, lineHeight: 1.12, marginBottom: 10 }}>Ladda upp din SIE-fil</h1>
-            <p style={{ fontSize: 14, color: '#6A6660', lineHeight: 1.65, marginBottom: 32, maxWidth: 460 }}>
-              Filen läses lokalt i din webbläsare. AI mappar konton mot NE-rader och vägleder dig steg för steg.
+            <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 38, fontWeight: 700, lineHeight: 1.12, marginBottom: 10 }}>Dags att deklarera</h1>
+            <p style={{ fontSize: 14, color: '#6A6660', lineHeight: 1.65, marginBottom: 20, maxWidth: 460 }}>
+              Vi hämtar siffrorna direkt från din bokföring — du behöver inte skriva in ett enda tal manuellt.
             </p>
+
+            {/* Hur det fungerar */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 28 }}>
+              {[
+                { icon: '📂', title: 'Ladda upp SIE-fil', desc: 'Exportera från Fortnox, Bokio, Visma eller Björn Lundén' },
+                { icon: '🤖', title: 'Vi räknar åt dig', desc: 'Avdrag, egenavgifter och skattemässiga justeringar' },
+                { icon: '📤', title: 'Skicka till SKV', desc: 'Ladda ner SRU-filen och ladda upp på skatteverket.se' },
+              ].map(s => (
+                <div key={s.title} style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, padding: '14px 14px 12px' }}>
+                  <div style={{ fontSize: 20, marginBottom: 6 }}>{s.icon}</div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A18', marginBottom: 4 }}>{s.title}</div>
+                  <div style={{ fontSize: 11.5, color: '#6A6660', lineHeight: 1.5 }}>{s.desc}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Var hittar man SIE-filen */}
+            <details style={{ marginBottom: 20, background: '#F5F0E8', border: '1px solid #DDD8CF', borderRadius: 4, padding: '10px 14px' }}>
+              <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#1A1A18', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>❓</span> Var hittar jag SIE-filen?
+              </summary>
+              <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {[
+                  { app: 'Fortnox', path: 'Bokföring → Exportera → SIE' },
+                  { app: 'Bokio', path: 'Inställningar → Exportera bokföring → SIE' },
+                  { app: 'Visma eEkonomi', path: 'Arkiv → Exportera → SIE-fil' },
+                  { app: 'Björn Lundén', path: 'Arkiv → SIE-export' },
+                ].map(p => (
+                  <div key={p.app} style={{ fontSize: 12, color: '#3A3832', lineHeight: 1.5 }}>
+                    <strong>{p.app}:</strong> {p.path}
+                  </div>
+                ))}
+              </div>
+            </details>
 
             <div
               onClick={() => fileInputRef.current?.click()}
@@ -1257,8 +1291,11 @@ export default function DeklaraPage() {
         {step === 4 && (
           <div style={{ maxWidth: 780, padding: '32px 36px 60px' }}>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav(3)}>← TILLBAKA</div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>Skattemässiga justeringar</h1>
-            <div style={{ fontSize: 13, color: '#6A6660', marginBottom: 20 }}>Bokfört resultat justeras till skattemässigt överskott. <span style={{ color: '#2D6A4F' }}>Grön kant</span> = SIE-förifyllt. Allt räknas om live.</div>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>Avdrag och justeringar</h1>
+            <div style={{ fontSize: 13, color: '#6A6660', marginBottom: 20, lineHeight: 1.6 }}>
+              Här fyller du i avdrag som hemmakontor, resor och pension — saker som sänker din skatt.
+              Det som är <span style={{ color: '#2D6A4F', fontWeight: 500 }}>grönt</span> är förifyllt från din bokföring.
+            </div>
 
             {/* ── AVSTÄMNING ── */}
             <div style={{ background: '#fff', border: `2px solid ${avstamningKlar ? '#B7D9C8' : '#C0392B'}`, borderRadius: 4, marginBottom: 24, overflow: 'hidden' }}>
@@ -1266,7 +1303,7 @@ export default function DeklaraPage() {
                 <span style={{ fontSize: 16 }}>{avstamningKlar ? '✓' : '⚠'}</span>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13, color: avstamningKlar ? '#2D6A4F' : '#C0392B' }}>
-                    {avstamningKlar ? 'Avstämning klar — du kan gå vidare' : 'Obligatorisk avstämning — svara på alla frågor nedan'}
+                    {avstamningKlar ? 'Avstämning klar — du kan gå vidare' : 'Snabbkoll — svara Ja eller Nej, tar 1 minut'}
                   </div>
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2, letterSpacing: '.04em' }}>
                     Dessa poster är vanliga men missas ofta. Svara Ja eller Nej på varje — ange 0 om det inte är aktuellt.
@@ -1282,7 +1319,7 @@ export default function DeklaraPage() {
                   key: 'hemmakontor',
                   icon: '🏠',
                   title: 'Hemmakontor / arbetsrum i bostaden',
-                  desc: 'Jobbar du hemma i ett rum som används uteslutande för arbete? Avdrag: hyresrätt 4 000 kr/år, bostadsrätt 2 000 kr/år.',
+                  desc: 'Har du ett rum hemma som du bara använder för jobbet? Du kan dra av 4 000 kr/år om du hyr, 2 000 kr om du äger.',
                   jaAction: () => {},
                   nejAction: () => setJv('hemmakontor', 0),
                 },
@@ -1290,7 +1327,7 @@ export default function DeklaraPage() {
                   key: 'traktamente',
                   icon: '🚗',
                   title: 'Resor & traktamente',
-                  desc: 'Har du haft tjänsteresor med privat bil (25 kr/mil) eller övernattningar med traktamente (290 kr/dag) som INTE bokförts?',
+                  desc: 'Har du kört din privata bil i jobbet, eller rest bort och ätit på Skatteverkets bekostnad? Det går att dra av 25 kr/mil och 290 kr/dag.',
                   jaAction: () => {},
                   nejAction: () => { setJv('resor_mil', 0); setJv('resor_trakt', 0); setJv('resor_trakt_manuell', 0) },
                 },
@@ -1298,7 +1335,7 @@ export default function DeklaraPage() {
                   key: 'pension',
                   icon: '🏦',
                   title: 'Pensionssparande / tjänstepension',
-                  desc: 'Har du betalat in till en IPS, ITPK eller tjänstepension? Avdrag upp till 35% av överskottet (max 573 000 kr) · IL 28:5.',
+                  desc: 'Har du satt in pengar till ett pensionssparande — privat pension (IPS) eller tjänstepension? Du kan dra av upp till 35% av årets vinst.',
                   jaAction: () => {},
                   nejAction: () => setJv('r24', 0),
                 },
@@ -1306,7 +1343,7 @@ export default function DeklaraPage() {
                   key: 'slp',
                   icon: '📋',
                   title: 'Särskild löneskatt på pensionssparavdrag',
-                  desc: 'Om du gör pensionsavdrag (R24 ovan) ska även särskild löneskatt 24,26% × pensionsavdraget beräknas och ingå i egenavgifterna.',
+                  desc: 'Om du svarade Ja på pension ovan: det tillkommer en extra avgift på 24,26% av pensionsavdraget. Vi räknar ut det automatiskt.',
                   jaAction: () => {},
                   nejAction: () => {},
                 },
@@ -1314,7 +1351,7 @@ export default function DeklaraPage() {
                   key: 'sjuklon',
                   icon: '🏥',
                   title: 'Sjuklön & sjukpenning',
-                  desc: 'Har du betalat sjuklön till anställda (R26)? Erhållit sjukpenning eller föräldrapenning från Försäkringskassan (R25, R27)?',
+                  desc: 'Har du anställda och betalat sjuklön? Eller fått sjuk- eller föräldrapenning från Försäkringskassan under året?',
                   jaAction: () => {},
                   nejAction: () => { setJv('r25', 0); setJv('r26', 0); setJv('r27', 0) },
                 },
@@ -1322,7 +1359,7 @@ export default function DeklaraPage() {
                   key: 'ega_fg',
                   icon: '⚖',
                   title: 'Egenavgifter föregående år — medgivna vs. påförda (§G)',
-                  desc: 'Förra årets 25%-avdrag (medgivna, R28) jämfört med faktiskt påförda avgifter (R29) på slutskattebeskedet. Differensen justerar årets överskott — positivt om du drog av för mycket, negativt om för lite. Ange 0 om du inte hade egenavgifter förra året.',
+                  desc: 'Titta på förra årets deklaration och slutskattebesked — stämde det förra årets skatteberäkning? Ange 0 om det var ditt första år eller om du är osäker.',
                   jaAction: () => {},
                   nejAction: () => { setJv('r28', 0); setJv('r29', 0) },
                 },
@@ -1330,7 +1367,7 @@ export default function DeklaraPage() {
                   key: 'underskott',
                   icon: '📉',
                   title: 'Outnyttjat underskott från föregående år (§E)',
-                  desc: 'Gick verksamheten med underskott förra året som inte utnyttjades fullt ut? Det rullas vidare och kan kvittas mot årets överskott. Hämta beloppet från föregående NE-bilaga rad R23 (kvarstående underskott). Ange 0 om inget underskott finns.',
+                  desc: 'Gick det minus förra året? Det outnyttjade underskottet kan minska din skatt i år. Titta på förra årets NE-bilaga rad R23. Ange 0 om det inte är aktuellt.',
                   jaAction: () => {},
                   nejAction: () => setJv('r21', 0),
                 },
@@ -1338,7 +1375,7 @@ export default function DeklaraPage() {
                   key: 'pfonder',
                   icon: '🏛',
                   title: 'Periodiseringsfonder — obligatorisk återföring eller årets avsättning (§B)',
-                  desc: 'Har du kvarvarande periodiseringsfonder som ska återföras (max 6 år, tax.år 2019 är sista)? Vill du sätta av årets resultat i periodiseringsfond (max 30%)? Ange 0 på alla rader om inget är aktuellt.',
+                  desc: 'Vill du "spara" en del av årets vinst och skjuta upp skatten? Max 30% av vinsten. Har du gjort det tidigare år (avsättningar äldre än 6 år måste återföras nu)? Ange 0 om du vill skippa detta.',
                   jaAction: () => {},
                   nejAction: () => { setJv('r10', 0); setJv('r11', 0); setJv('r12', 0); setJv('r13', 0) },
                 },
@@ -1616,7 +1653,7 @@ export default function DeklaraPage() {
               <button
                 onClick={() => { if (!avstamningKlar) { alert('Svara på alla avstämningsfrågor innan du går vidare.'); return } nav(5) }}
                 style={{ padding: '10px 20px', background: avstamningKlar ? '#1A1A18' : '#C8C3BA', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: avstamningKlar ? 'pointer' : 'not-allowed', borderRadius: 2, fontFamily: 'inherit' }}
-              >{avstamningKlar ? 'Beräkna egenavgifter →' : '⚠ Slutför avstämning först'}</button>
+              >{avstamningKlar ? 'Beräkna min skatt →' : '⚠ Svara på frågorna ovan först'}</button>
               <button onClick={() => openDrawer(`Analysera mina justeringar. Bokfört överskott: ${fmt(bokf)} kr. Optimera periodiseringsfond och räntefördelning.`)} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Fråga Normiq</button>
               <button onClick={() => nav(3)} style={{ background: 'none', border: 'none', fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#9A9690', cursor: 'pointer', letterSpacing: '.06em' }}>← Tillbaka</button>
             </div>
@@ -1628,7 +1665,7 @@ export default function DeklaraPage() {
           <div style={{ maxWidth: 780, padding: '32px 36px 60px' }}>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav(4)}>← TILLBAKA</div>
             <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>
-              {skattemassigt < 0 ? 'Underskott av aktiv näring' : 'Egenavgifter & skatteuträkning'}
+              {skattemassigt < 0 ? 'Underskott — ingen skatt att betala' : 'Din skatt'}
             </h1>
             {skattemassigt < 0 ? (
               <div style={{ background: '#FDF0EE', border: '2px solid #C0392B', borderRadius: 4, padding: '16px 18px', marginBottom: 20 }}>
@@ -1780,7 +1817,7 @@ export default function DeklaraPage() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-              <button onClick={() => nav(6)} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Granska & exportera →</button>
+              <button onClick={() => nav(6)} style={{ padding: '10px 20px', background: '#1A1A18', color: '#fff', border: 'none', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Klar att skicka in →</button>
               <button onClick={() => openDrawer(`Ge råd om hur jag kan sänka skatten. Överskott: ${fmt(skattemassigt)} kr. Total skatt: ${fmt(ega.tot)} kr.`)} style={{ padding: '10px 16px', background: '#fff', color: '#3A3832', border: '1px solid #C8C3BA', fontSize: 13, fontWeight: 500, cursor: 'pointer', borderRadius: 2, fontFamily: 'inherit' }}>Fråga Normiq</button>
               <button onClick={() => nav(4)} style={{ background: 'none', border: 'none', fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#9A9690', cursor: 'pointer', letterSpacing: '.06em' }}>← Tillbaka</button>
             </div>
@@ -1791,7 +1828,11 @@ export default function DeklaraPage() {
         {step === 6 && (
           <div style={{ maxWidth: 780, padding: '32px 36px 60px' }}>
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginBottom: 20, letterSpacing: '.06em', cursor: 'pointer' }} onClick={() => nav(5)}>← TILLBAKA</div>
-            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 16 }}>Granska & exportera</h1>
+            <h1 style={{ fontFamily: "'Playfair Display', serif", fontSize: 30, fontWeight: 700, marginBottom: 8 }}>Klar! Skicka in till Skatteverket</h1>
+            <div style={{ background: '#EFF7F2', border: '1px solid #B7D9C8', borderRadius: 4, padding: '12px 16px', marginBottom: 20, fontSize: 13, color: '#1A4A30', lineHeight: 1.65 }}>
+              <strong>Så skickar du in:</strong> Ladda ner de två filerna nedan → gå till skatteverket.se → Inkomstdeklaration 1 → Ladda upp fil → välj båda filerna (BLANKETTER.SRU + INFO.SRU).
+              <a href="https://skatteverket.se/privat/deklaration" target="_blank" rel="noopener" style={{ color: '#2D6A4F', marginLeft: 8, fontWeight: 500 }}>Öppna Skatteverket ↗</a>
+            </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
               {[{ l: ega.slutlig >= 0 ? 'Överskott av näring' : 'Underskott av näring', v: fmt(Math.abs(ega.slutlig)) + ' kr', c: ega.slutlig < 0 ? '#C0392B' : undefined }, { l: 'Egenavgifter', v: fmt(ega.netto) + ' kr', c: '#C0392B' }, { l: 'Kommunalskatt', v: fmt(ega.kom) + ' kr', c: '#C0392B' }, { l: 'Total skatt & avg.', v: fmt(ega.tot) + ' kr', c: '#C0392B' }].map(s => (
