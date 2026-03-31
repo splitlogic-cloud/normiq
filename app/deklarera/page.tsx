@@ -677,14 +677,14 @@ export default function DeklaraPage() {
 
       // Intäkter (bevarar tecken — negativ intäkt är OK)
       u(7400, fv('R1')),
-      fv('R2') > 0 ? u(7410, fv('R2')) : '',  // Momsfria intäkter (bara positiva)
-      // 7420 ej giltigt SRU-fält i NE-2025P4 — ränteintäkter ingår ej
+      fv('R2') > 0 ? u(7401, fv('R2')) : '',  // R2 Momsfria intäkter
+      fv('R3') > 0 ? u(7403, fv('R3')) : '',  // R4 Ränteintäkter
 
       // Kostnader
       sumKost ? u(7501, sumKost) : '',
-      fv('R7') ? u(7502, Math.abs(fv('R7'))) : '',    // R7 Löner anställda
-      fv('R12') ? u(7503, Math.abs(fv('R12'))) : '',  // R7 Arbetsgivaravgifter
-      fv('R8') ? u(7510, Math.abs(fv('R8'))) : '',    // R8 Räntekostnader
+      fv('R7') > 0 ? u(7502, Math.abs(fv('R7'))) : '',   // R7 Personal (70xx-76xx)
+      fv('R8') > 0 ? u(7503, Math.abs(fv('R8'))) : '',   // R8 Räntekostnader (774x,79xx)
+      fv('R17') > 0 ? u(7505, Math.abs(fv('R17'))) : '',  // R10 Avskrivningar inventarier
 
       // Balansräkning tillgångar
       saknarTillgangar ? u(7100, 'X') : '',
@@ -695,26 +695,28 @@ export default function DeklaraPage() {
         const llSum = (from: string, to: string) =>
           Math.round(bs.ll.filter((l: {acc:string;amt:number}) => l.acc >= from && l.acc <= to).reduce((s: number, l: {amt:number}) => s + l.amt, 0))
         const rows: string[] = []
-        // Anläggningstillgångar
-        const immat = bsSum('1000','1099'); if (immat > 0) rows.push(u(7210, immat))            // B1
-        const fastigh = bsSum('1100','1179'); if (fastigh > 0) rows.push(u(7214, fastigh))       // B2
-        const mark = bsSum('1180','1199'); if (mark > 0) rows.push(u(7213, mark))               // B3 mark ej avskrivbar
-        const invBrut = bsSum('1200','1259'); const invAck = bsSum('1260','1299')
-        if (invBrut > 0) rows.push(u(7215, invBrut - invAck))                                    // B4
-        const ovrigAntl = bsSum('1300','1399'); if (ovrigAntl > 0) rows.push(u(7233, ovrigAntl)) // B5
-        // Omsättningstillgångar
-        const lager = bsSum('1400','1499'); if (lager > 0) rows.push(u(7240, lager))             // B6
-        const kundfordr = bsSum('1500','1599'); if (kundfordr > 0) rows.push(u(7381, kundfordr)) // B7
-        const ovrigaFordr = bsSum('1600','1899'); if (ovrigaFordr > 0) rows.push(u(7383, ovrigaFordr)) // B8
-        const kassa = bsSum('1900','1999'); if (kassa > 0) rows.push(u(7280, kassa))             // B9
-        // Eget kapital och skulder
-        const ek = llSum('2000','2099'); if (ek !== 0) rows.push(u(7310, ek))                   // B10
-        const pf = llSum('2100','2199'); if (pf > 0) rows.push(u(7321, pf))                     // B11 obeskattade
-        const avsattr = llSum('2200','2299'); if (avsattr > 0) rows.push(u(7340, avsattr))       // B12 avsättningar
-        const lanesk = llSum('2300','2399'); if (lanesk > 0) rows.push(u(7351, lanesk))          // B13 låneskulder
-        const levsk = llSum('2400','2449'); if (levsk > 0) rows.push(u(7365, levsk))             // B15 leverantörsskulder
-        const skattesk = llSum('2500','2599'); if (skattesk > 0) rows.push(u(7368, skattesk))    // B14 skatteskulder
-        const ovrigSk = llSum('2600','2899'); if (ovrigSk > 0) rows.push(u(7372, ovrigSk))      // B16 övriga skulder
+        // Balansräkning — BAS 2023 kopplingstabell (NE_EJ_K1-Intervall-231002.xlsx)
+        const immat = bsSum('1000','1099'); if (immat > 0) rows.push(u(7200, immat))              // B1
+        const bygg = bsSum('1100','1129') + bsSum('1150','1179') + bsSum('1190','1199')
+        if (bygg > 0) rows.push(u(7210, bygg))                                                    // B2
+        const mark = bsSum('1130','1149') + bsSum('1180','1189'); if (mark > 0) rows.push(u(7211, mark)) // B3
+        const invBrut = bsSum('1200','1290') + bsSum('1292','1299'); const invAck = bsSum('1291','1291')
+        if (invBrut > 0) rows.push(u(7212, Math.max(0, invBrut - invAck)))                       // B4
+        const ovrAnl = bsSum('1300','1399'); if (ovrAnl > 0) rows.push(u(7213, ovrAnl))           // B5
+        const lager = bsSum('1400','1499'); if (lager > 0) rows.push(u(7240, lager))              // B6
+        const kundfordr = bsSum('1500','1599'); if (kundfordr > 0) rows.push(u(7250, kundfordr))  // B7
+        const ovrigaFordr = bsSum('1600','1899'); if (ovrigaFordr > 0) rows.push(u(7260, ovrigaFordr)) // B8
+        const kassa = bsSum('1900','1999'); if (kassa > 0) rows.push(u(7280, kassa))              // B9
+        const ek = llSum('2010','2019') + llSum('2050','2059'); if (ek !== 0) rows.push(u(7300, ek)) // B10 EK
+        const obeskatt = llSum('2100','2199'); if (obeskatt > 0) rows.push(u(7320, obeskatt))     // B11
+        const avsattr = llSum('2200','2299'); if (avsattr > 0) rows.push(u(7330, avsattr))        // B12
+        const lanesk = llSum('2300','2399') + llSum('2410','2419') + llSum('2480','2489')
+        if (lanesk > 0) rows.push(u(7380, lanesk))                                               // B13
+        // B14 skatteskulder = 7381 (inget kontonummer redovisas normalt)
+        const levsk = llSum('2440','2449') + llSum('2460','2479')
+        if (levsk > 0) rows.push(u(7382, levsk))                                                  // B15
+        const ovrigSk = llSum('2420','2439') + llSum('2450','2459') + llSum('2490','2499') + llSum('2600','2999')
+        if (ovrigSk > 0) rows.push(u(7383, ovrigSk))                                             // B16
         return rows
       })(),
 
