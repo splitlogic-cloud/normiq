@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
       <div class="company-sub">${orgNumber || ''} · Inkomstår ${fiscalYearStart?.substring(0,4) || '2024'} (${fiscalYearStart?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')} – ${fiscalYearEnd?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')})</div>
     </div>
     <div class="header-meta">
-      Blankett NE-2025P4<br>
-      Taxeringsår 2025<br>
+      Blankett NE-2026P4<br>
+      Taxeringsår 2026<br>
       Framställd ${today}
     </div>
   </div>
@@ -201,7 +201,7 @@ ${(flags || []).length > 0 ? `
 <div class="page-break"></div>
 
 <div class="section">
-  <div class="section-title">SRU-fil — BLANKETTER.SRU (NE-2025P4)</div>
+  <div class="section-title">SRU-fil — BLANKETTER.SRU (NE-2026P4)</div>
   <div class="sru-block">${(sruContent || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>
 </div>
 
