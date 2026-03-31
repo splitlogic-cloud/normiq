@@ -372,9 +372,10 @@ export default function DeklaraPage() {
     pension: null,
     slp: null,
     sjuklon: null,
-    ega_fg: null,      // medgivna/påförda egenavgifter föregående år (§G)
-    underskott: null,  // outnyttjat underskott från föregående år (§E)
-    pfonder: null,     // periodiseringsfonder att återföra (§B)
+    ega_fg: null,
+    underskott: null,
+    pfonder: null,
+    ej_skattepliktig: null,  // bokförda intäkter som inte ska tas upp (R14)
   })
   const setAv = (k: string, v: 'ja' | 'nej') => setAvstamning(prev => ({ ...prev, [k]: v }))
   const avstamningKlar = Object.values(avstamning).every(v => v !== null)
@@ -774,6 +775,8 @@ export default function DeklaraPage() {
       u(7600, bokfOvsk),
 
       // Skattemässiga justeringar
+      // R14 Bokförda intäkter ej skattepliktiga — ingen verifierad SRU-kod ännu
+      // Påverkar skattemässigt resultat via dH men skickas ej separat
       r16hk  ? u(7701, r16hk)  : '',
       r22res ? u(7704, r22res) : '',
 
@@ -1423,6 +1426,14 @@ export default function DeklaraPage() {
                   desc: 'Vill du "spara" en del av årets vinst och skjuta upp skatten? Max 30% av vinsten. Har du gjort det tidigare år (avsättningar äldre än 6 år måste återföras nu)? Ange 0 om du vill skippa detta.',
                   jaAction: () => {},
                   nejAction: () => { setJv('r10', 0); setJv('r11', 0); setJv('r12', 0); setJv('r13', 0) },
+                },
+                {
+                  key: 'ej_skattepliktig',
+                  icon: '🔕',
+                  title: 'Skattefria intäkter bokförda i resultaträkningen (R14)',
+                  desc: 'Har du bokfört intäkter som inte ska beskattas — t.ex. skattefria bidrag (Tillväxtverket, Almi), försäkringsersättningar, erhållna gåvor eller andra skattefria intäkter? De ska dras av här så de inte räknas med i överskottet.',
+                  jaAction: () => {},
+                  nejAction: () => setJv('r14h', 0),
                 },
               ].map((item, idx, arr) => (
                 <div key={item.key} style={{ display: 'grid', gridTemplateColumns: '32px 1fr auto', gap: 12, padding: '13px 16px', borderBottom: idx < arr.length - 1 ? `1px solid ${avstamning[item.key] ? '#DDD8CF' : '#F0E8E8'}` : 'none', background: avstamning[item.key] === null ? '#FFFAFA' : '#fff', alignItems: 'start' }}>
