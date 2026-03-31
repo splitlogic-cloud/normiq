@@ -459,11 +459,26 @@ export default function DeklaraPage() {
   const [j, setJ] = useState<Record<string, number>>({})
   const setJv = (k: string, v: number) => setJ(prev => ({ ...prev, [k]: v }))
 
-  // Supabase
-  const supabase = createBrowserClient(
+  // Supabase — useMemo så klienten inte återskapas vid varje render
+  const supabase = React.useMemo(() => createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  ), [])
+
+  // Auth state
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [supabase])
 
   // Deklaration history
   const [deklarationId, setDeklarationId] = useState<string | null>(null)
@@ -815,6 +830,10 @@ export default function DeklaraPage() {
   // ── Save deklaration ───────────────────────────
   const saveDeklaration = async () => {
     if (!sieData) return
+    if (!user) {
+      alert('Du måste vara inloggad för att spara. Logga in på normiq.se/login')
+      return
+    }
     setSaving(true)
     const inkomstar = parseInt(sieData.fiscalYearStart.substring(0, 4)) || 2025
     const state = {
@@ -836,14 +855,22 @@ export default function DeklaraPage() {
       sru_blanketter: blanketter,
       sru_info: info,
     }
-    if (deklarationId) {
-      await supabase.from('deklarationer').update({ ...payload, status: 'utkast' }).eq('id', deklarationId)
-    } else {
-      const { data } = await supabase.from('deklarationer').insert(payload).select('id').single()
-      if (data) setDeklarationId(data.id)
+    try {
+      if (deklarationId) {
+        const { error } = await supabase.from('deklarationer').update({ ...payload, status: 'utkast' }).eq('id', deklarationId)
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase.from('deklarationer').insert(payload).select('id').single()
+        if (error) throw error
+        if (data) setDeklarationId(data.id)
+      }
+      await loadHistorik()
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      alert('Kunde inte spara: ' + msg)
+    } finally {
+      setSaving(false)
     }
-    setSaving(false)
-    loadHistorik()
   }
 
   // ── Load saved deklaration ─────────────────────
@@ -894,13 +921,47 @@ export default function DeklaraPage() {
     { n: 6, label: 'Granska & exportera', sub: 'SRU-fil + PDF' },
   ]
 
+  if (authLoading) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#F5F0E8' }}>
+      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 22, fontWeight: 700, color: '#1A1A18' }}>
+        Normiq <span style={{ color: '#C0392B' }}>Deklarera</span>
+      </div>
+    </div>
+  )
+
+  if (!user) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#F5F0E8', fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <div style={{ maxWidth: 380, width: '100%', padding: '0 24px' }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 32, fontWeight: 700, marginBottom: 6 }}>Normiq <span style={{ color: '#C0392B' }}>Deklarera</span></div>
+        <div style={{ fontSize: 14, color: '#6A6660', lineHeight: 1.6, marginBottom: 32 }}>Logga in på ditt Normiq-konto för att komma åt NE-deklarationsverktyget.</div>
+        <a href="/login?redirect=/deklarera" style={{ display: 'block', padding: '14px 20px', background: '#1A1A18', color: '#fff', fontSize: 14, fontWeight: 500, borderRadius: 2, textAlign: 'center', textDecoration: 'none' }}>
+          Logga in på Normiq →
+        </a>
+        <div style={{ textAlign: 'center', marginTop: 14, fontSize: 12, color: '#9A9690' }}>
+          Inget konto? <a href="/register" style={{ color: '#C0392B' }}>Skapa ett här</a>
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', fontFamily: "'Inter', system-ui, sans-serif", background: '#F5F0E8' }}>
 
       {/* ── SIDEBAR ── */}
       <aside style={{ width: 240, background: '#fff', borderRight: '1px solid #DDD8CF', padding: '24px 0', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto', flexShrink: 0 }}>
         <div style={{ padding: '0 20px', marginBottom: 4, fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700 }}>Deklarera NE</div>
-        <div style={{ padding: '0 20px', fontSize: 11, color: '#9A9690', marginBottom: 20 }}>Taxeringsår 2026 · Inkomstår 2025</div>
+        <div style={{ padding: '0 20px', fontSize: 11, color: '#9A9690', marginBottom: 10 }}>Taxeringsår 2026 · Inkomstår 2025</div>
+        <div style={{ padding: '6px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #DDD8CF', marginBottom: 14 }}>
+          <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#6A6660', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
+            {user?.email}
+          </div>
+          <button
+            onClick={() => supabase.auth.signOut().then(() => window.location.href = '/login')}
+            style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#9A9690', background: 'none', border: '1px solid #DDD8CF', borderRadius: 2, padding: '2px 7px', cursor: 'pointer', letterSpacing: '.04em', flexShrink: 0, marginLeft: 6 }}
+          >
+            Logga ut
+          </button>
+        </div>
 
         {filename && (
           <div style={{ margin: '0 16px 16px', padding: '10px 14px', background: '#F5F0E8', border: '1px solid #DDD8CF', borderRadius: 4 }}>
