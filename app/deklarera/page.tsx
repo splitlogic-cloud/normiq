@@ -241,7 +241,7 @@ function calcStep3(base: number, vals: Record<string, number>) {
   const dSLP = g('r24') > 0 ? -Math.round(g('r24') * 0.2426) : 0
   // §G: medgivna (r28) - påförda (r29). Positiv = drog av för mycket = återföring (ökar överskott). Negativ = extra avdrag.
   const dG = g('r28') - g('r29')
-  const dH = g('r31') + g('r32') + g('r33') + g('r34') - g('r35')
+  const dH = g('r31') + g('r32') + g('r33') + g('r34') - g('r35') - g('r14h')
   // Resor & traktamente → R22
   const trakt = g('resor_trakt_manuell') > 0 ? g('resor_trakt_manuell') : g('resor_trakt') * 290
   // Utlandstraktamente — summa från alla rader i utlandResor (injicerat som utland_totalt)
@@ -322,73 +322,17 @@ const DEMO_SIE = `#FLAGGA 0
 #UB 0 2440 -28000
 #UB 0 2500 -15000`
 
-// ─── Utlandstraktamente normalbelopp 2025 (SKV) ──────────────
-const UTLAND_NORMALBELOPP: { land: string; belopp: number }[] = [
-  { land: 'Albanien', belopp: 351 }, { land: 'Algeriet', belopp: 334 },
-  { land: 'Angola', belopp: 540 }, { land: 'Argentina', belopp: 388 },
-  { land: 'Armenien', belopp: 469 }, { land: 'Australien', belopp: 727 },
-  { land: 'Azerbajdzjan', belopp: 437 }, { land: 'Bahamas', belopp: 1146 },
-  { land: 'Bahrain', belopp: 881 }, { land: 'Bangladesh', belopp: 399 },
-  { land: 'Barbados', belopp: 930 }, { land: 'Belarus', belopp: 300 },
-  { land: 'Belgien', belopp: 897 }, { land: 'Belize', belopp: 591 },
-  { land: 'Bolivia', belopp: 406 }, { land: 'Bosnien-Hercegovina', belopp: 355 },
-  { land: 'Botswana', belopp: 358 }, { land: 'Brasilien', belopp: 376 },
-  { land: 'Bulgarien', belopp: 459 }, { land: 'Burkina Faso', belopp: 421 },
-  { land: 'Chile', belopp: 479 }, { land: 'Colombia', belopp: 378 },
-  { land: 'Costa Rica', belopp: 677 }, { land: 'Cypern', belopp: 601 },
-  { land: 'Danmark', belopp: 1226 }, { land: 'Djibouti', belopp: 619 },
-  { land: 'Dominikanska republiken', belopp: 457 }, { land: 'Ecuador', belopp: 573 },
-  { land: 'Egypten', belopp: 300 }, { land: 'El Salvador', belopp: 462 },
-  { land: 'Estland', belopp: 683 }, { land: 'Etiopien', belopp: 300 },
-  { land: 'Fiji', belopp: 415 }, { land: 'Filippinerna', belopp: 466 },
-  { land: 'Finland', belopp: 968 }, { land: 'Frankrike', belopp: 850 },
-  { land: 'Franska Polynesien', belopp: 926 }, { land: 'Förenade Arabemiraten', belopp: 883 },
-  { land: 'Gabon', belopp: 650 }, { land: 'Georgien', belopp: 331 },
-  { land: 'Ghana', belopp: 580 }, { land: 'Grekland', belopp: 746 },
-  { land: 'Guatemala', belopp: 561 }, { land: 'Guinea', belopp: 658 },
-  { land: 'Honduras', belopp: 423 }, { land: 'Hong Kong', belopp: 895 },
-  { land: 'Indien', belopp: 300 }, { land: 'Indonesien', belopp: 418 },
-  { land: 'Irak', belopp: 590 }, { land: 'Irland', belopp: 1038 },
-  { land: 'Island', belopp: 1125 }, { land: 'Israel', belopp: 956 },
-  { land: 'Italien', belopp: 802 }, { land: 'Jamaica', belopp: 425 },
-  { land: 'Japan', belopp: 386 }, { land: 'Jordanien', belopp: 803 },
-  { land: 'Kambodja', belopp: 532 }, { land: 'Kamerun', belopp: 524 },
-  { land: 'Kanada', belopp: 895 }, { land: 'Kazakstan', belopp: 353 },
-  { land: 'Kenya', belopp: 472 }, { land: 'Kina', belopp: 581 },
-  { land: 'Kroatien', belopp: 550 }, { land: 'Kuba', belopp: 587 },
-  { land: 'Kuwait', belopp: 849 }, { land: 'Lettland', belopp: 763 },
-  { land: 'Liberia', belopp: 649 }, { land: 'Liechtenstein', belopp: 1120 },
-  { land: 'Litauen', belopp: 635 }, { land: 'Luxemburg', belopp: 953 },
-  { land: 'Malaysia', belopp: 319 }, { land: 'Maldiverna', belopp: 503 },
-  { land: 'Mali', belopp: 488 }, { land: 'Malta', belopp: 659 },
-  { land: 'Marocko', belopp: 507 }, { land: 'Mexiko', belopp: 562 },
-  { land: 'Moldova', belopp: 414 }, { land: 'Monaco', belopp: 1073 },
-  { land: 'Montenegro', belopp: 391 }, { land: 'Myanmar', belopp: 367 },
-  { land: 'Namibia', belopp: 300 }, { land: 'Nederländerna', belopp: 745 },
-  { land: 'Nepal', belopp: 300 }, { land: 'Nicaragua', belopp: 469 },
-  { land: 'Niger', belopp: 394 }, { land: 'Nordmakedonien', belopp: 312 },
-  { land: 'Norge', belopp: 1054 }, { land: 'Nya Zeeland', belopp: 525 },
-  { land: 'Oman', belopp: 822 }, { land: 'Pakistan', belopp: 300 },
-  { land: 'Panama', belopp: 673 }, { land: 'Paraguay', belopp: 349 },
-  { land: 'Peru', belopp: 482 }, { land: 'Polen', belopp: 597 },
-  { land: 'Portugal', belopp: 616 }, { land: 'Puerto Rico', belopp: 701 },
-  { land: 'Qatar', belopp: 837 }, { land: 'Rumänien', belopp: 414 },
-  { land: 'Ryssland', belopp: 661 }, { land: 'Saudiarabien', belopp: 1016 },
-  { land: 'Schweiz', belopp: 1332 }, { land: 'Senegal', belopp: 626 },
-  { land: 'Serbien', belopp: 533 }, { land: 'Seychellerna', belopp: 846 },
-  { land: 'Singapore', belopp: 845 }, { land: 'Slovakien', belopp: 737 },
-  { land: 'Slovenien', belopp: 574 }, { land: 'Spanien', belopp: 635 },
-  { land: 'Sri Lanka', belopp: 424 }, { land: 'Storbritannien', belopp: 901 },
-  { land: 'Sydafrika', belopp: 349 }, { land: 'Sydkorea', belopp: 517 },
-  { land: 'Taiwan', belopp: 554 }, { land: 'Tanzania', belopp: 331 },
-  { land: 'Thailand', belopp: 521 }, { land: 'Tjeckien', belopp: 695 },
-  { land: 'Trinidad och Tobago', belopp: 801 }, { land: 'Tunisien', belopp: 300 },
-  { land: 'Turkiet', belopp: 366 }, { land: 'Turkmenistan', belopp: 1454 },
-  { land: 'Tyskland', belopp: 760 }, { land: 'Uganda', belopp: 446 },
-  { land: 'Ukraina', belopp: 300 }, { land: 'Ungern', belopp: 679 },
-  { land: 'Uruguay', belopp: 595 }, { land: 'USA', belopp: 1049 },
-  { land: 'Vietnam', belopp: 328 }, { land: 'Zambia', belopp: 384 },
-  { land: 'Österrike', belopp: 730 }, { land: 'Övriga länder', belopp: 493 },
+// ─── Utlandstraktamente — laddas från API (SKV 2025) ───────────
+// Fallback finns i /api/traktamente/route.ts
+const UTLAND_NORMALBELOPP_FALLBACK: { land: string; belopp: number }[] = [
+  { land: 'Norge', belopp: 1095 }, { land: 'Danmark', belopp: 1268 },
+  { land: 'Finland', belopp: 952 }, { land: 'Sverige', belopp: 290 },
+  { land: 'Tyskland', belopp: 780 }, { land: 'Frankrike', belopp: 810 },
+  { land: 'Spanien', belopp: 676 }, { land: 'Italien', belopp: 720 },
+  { land: 'USA', belopp: 1049 }, { land: 'Schweiz', belopp: 1269 },
+  { land: 'Österrike', belopp: 696 }, { land: 'Belgien', belopp: 856 },
+  { land: 'Nederländerna', belopp: 711 }, { land: 'Polen', belopp: 569 },
+  { land: 'Övriga länder', belopp: 469 },
 ]
 
 // ─── Accordion Component ─────────────────────
@@ -440,6 +384,16 @@ export default function DeklaraPage() {
   const [uppdragstagare, setUppdragstagare] = useState<boolean>(false)
   const [saknarTillgangar, setSaknarTillgangar] = useState<boolean>(false)
 
+  // Utlandstraktamente — normalbelopp hämtas från SKV API
+  const [utlandNormalbelopp, setUtlandNormalbelopp] = useState<{ land: string; belopp: number }[]>(UTLAND_NORMALBELOPP_FALLBACK)
+  useEffect(() => {
+    const inkomstar = sieData?.fiscalYearStart?.substring(0, 4) || '2025'
+    fetch(`/api/traktamente?year=${inkomstar}`)
+      .then(r => r.json())
+      .then(d => { if (d.list?.length > 0) setUtlandNormalbelopp(d.list) })
+      .catch(() => {}) // keep fallback on error
+  }, [sieData?.fiscalYearStart])
+
   // Utlandstraktamente — flera länder/resor
   const [utlandResor, setUtlandResor] = useState<{ land: number; dagar: number; halvdagar: number }[]>([])
   const addUtland = () => setUtlandResor(prev => [...prev, { land: 0, dagar: 0, halvdagar: 0 }])
@@ -448,7 +402,7 @@ export default function DeklaraPage() {
     setUtlandResor(prev => prev.map((r, idx) => idx === i ? { ...r, [key]: val } : r))
   const utlandTotalt = utlandResor.reduce((sum, r) => {
     if (!r.land) return sum
-    const nb = UTLAND_NORMALBELOPP[r.land - 1]?.belopp || 0
+    const nb = utlandNormalbelopp[r.land - 1]?.belopp || 0
     return sum + Math.round(nb * r.dagar + nb * 0.5 * r.halvdagar)
   }, 0)
 
@@ -605,6 +559,86 @@ export default function DeklaraPage() {
       const win = window.open(URL.createObjectURL(blob), '_blank')
       if (win) win.addEventListener('load', () => setTimeout(() => win.print(), 600))
     } catch { alert('PDF-export misslyckades.') }
+  }
+
+  // ── SRU-validering ─────────────────────────────────────────
+  function validateSRU(): { ok: boolean; errors: string[]; warnings: string[] } {
+    const { blanketter } = generateSRU()
+    const errors: string[] = []
+    const warnings: string[] = []
+
+    // Parse the SRU content into a map of field→value
+    const fields: Record<string, string> = {}
+    for (const line of blanketter.split('\n')) {
+      const m = line.match(/^#UPPGIFT\s+(\d+)\s+(.+)$/)
+      if (m) fields[m[1]] = m[2].trim()
+    }
+
+    // ── OBLIGATORISKA FÄLT ───────────────────────────────────
+    if (!fields['7011']) errors.push('Räkenskapsår start (7011) saknas')
+    if (!fields['7012']) errors.push('Räkenskapsår slut (7012) saknas')
+    if (!fields['7023']) errors.push('Aktiv/passiv näring (7023) saknas')
+    if (!fields['7440']) errors.push('Bokfört resultat (7440) saknas — kritiskt fel')
+    if (!verksamhetensArt.trim()) errors.push('Verksamhetens art saknas — SKV kräver detta')
+
+    // ── DATUM-FORMAT ─────────────────────────────────────────
+    if (fields['7011'] && !/^\d{8}$/.test(fields['7011']))
+      errors.push(`Räkenskapsår start har fel format: "${fields['7011']}" (ska vara YYYYMMDD)`)
+    if (fields['7012'] && !/^\d{8}$/.test(fields['7012']))
+      errors.push(`Räkenskapsår slut har fel format: "${fields['7012']}" (ska vara YYYYMMDD)`)
+
+    // ── PERSONNUMMER ─────────────────────────────────────────
+    const identLine = blanketter.split('\n').find(l => l.startsWith('#IDENTITET'))
+    if (identLine) {
+      const pnr = identLine.split(' ')[1] || ''
+      if (pnr.length !== 12) errors.push(`Personnummer har ${pnr.length} siffror — ska vara 12 (t.ex. 197503247814)`)
+      if (pnr.includes('-')) errors.push('Personnummer ska inte innehålla bindestreck i SRU-filen')
+    } else {
+      errors.push('#IDENTITET-rad saknas')
+    }
+
+    // ── VERKSAMHETENS ART ─────────────────────────────────────
+    if (verksamhetensArt.length > 40)
+      warnings.push(`Verksamhetens art är ${verksamhetensArt.length} tecken — rekommenderat max 40`)
+
+    // ── ÖVERSKOTT/UNDERSKOTT-LOGIK ────────────────────────────
+    const r47 = ega.slutlig
+    if (r47 > 0) {
+      if (!fields['7630']) errors.push('Slutligt överskott (7630) saknas trots positivt resultat')
+      if (!fields['8046']) warnings.push('Egenavgifts-markering (8046 X) saknas — SKV beräknar inte EGA')
+      if (!fields['8009']) warnings.push('Beräknade egenavgifter (8009) saknas')
+      if (!fields['7714']) warnings.push('25%-avdrag R43 (7714) saknas')
+      if (fields['7730']) errors.push('Underskott (7730) ska inte finnas vid positivt resultat')
+    } else if (r47 < 0) {
+      if (!fields['7730']) errors.push('Underskott (7730) saknas trots negativt resultat')
+      if (fields['7630']) errors.push('Överskott (7630) ska inte finnas vid negativt resultat')
+      if (fields['8046']) warnings.push('EGA-markering (8046) bör inte skickas vid underskott')
+    }
+
+    // ── BELOPP-KONTROLL ───────────────────────────────────────
+    const numericFields = ['7400','7440','7501','7280','7240','7250','7260','7630','7730','8009','8011','7714']
+    for (const f of numericFields) {
+      if (fields[f] && !/^-?\d+$/.test(fields[f]))
+        errors.push(`Fält ${f} har ogiltigt värde "${fields[f]}" — ska vara heltal`)
+    }
+
+    // ── OGILTIGA FÄLTKODER (kända problem) ───────────────────
+    const invalidForNE = ['7310','7321','7340','7351','7365','7368','7372','7215','7420','7410']
+    for (const f of invalidForNE) {
+      if (fields[f]) errors.push(`Fält ${f} är inte ett giltigt postnamn i NE-2025P4`)
+    }
+
+    // ── SUMMAKONTROLL ─────────────────────────────────────────
+    const r1 = parseInt(fields['7400'] || '0')
+    const kost = parseInt(fields['7501'] || '0')
+    const bokf = parseInt(fields['7440'] || '0')
+    if (r1 > 0 && kost > 0) {
+      const expected = r1 - kost
+      if (Math.abs(expected - bokf) > 2)
+        warnings.push(`Bokfört resultat (${bokf}) stämmer inte med R1−kostnader (${r1}−${kost}=${expected}) — diff ${Math.abs(expected-bokf)} kr`)
+    }
+
+    return { ok: errors.length === 0, errors, warnings }
   }
 
   // AI chat
@@ -826,6 +860,17 @@ export default function DeklaraPage() {
   }, [supabase])
 
   useEffect(() => { loadHistorik() }, [loadHistorik])
+
+  // Auto-save — debounced 3 sek efter att j/utlandResor/avstamning ändrats
+  const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!sieData || !user || step < 4) return  // Bara steg 4+
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+    autoSaveTimer.current = setTimeout(() => {
+      saveDeklaration()
+    }, 3000)
+    return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }
+  }, [j, utlandResor, avstamning, passiv, kommunalskatt, verksamhetensArt])  // eslint-disable-line
 
   // ── Save deklaration ───────────────────────────
   const saveDeklaration = async () => {
@@ -1424,7 +1469,8 @@ export default function DeklaraPage() {
               { code: 'NE §E', name: 'Outnyttjat underskott', sum: sgn(s3.dE), info: { type: 'amber', text: 'Rullas vidare utan tidsgräns. Kan kvittas mot tjänst (70%) de första 5 åren.' }, fields: [{ id: 'r21', label: 'Outnyttjat underskott från föregående år', hint: '' }, { id: 'r22', label: 'Utnyttjat underskott i år', hint: 'Auto — max årets överskott', calc: true }, { id: 'r23', label: 'Kvarstående (rullas vidare)', hint: 'Auto', calc: true }] },
               { code: 'NE §F', name: 'Pension, sjuklön & sjukpenning', sum: sgn(s3.dF), info: { type: 'blue', text: `Tjänstepension max 35% av överskott = ${fmt(Math.floor(bokf*0.35))} kr (tak 573 000 kr) · IL 28:5. OBS: SLP 24,26% × R24 läggs automatiskt till som kostnad nedan.` }, fields: [{ id: 'r24', label: 'Avdrag för pensionssparande / tjänstepension', hint: `Max 35% × ${fmt(bokf)} kr = ${fmt(Math.floor(bokf * 0.35))} kr · IL 28:5` }, { id: 'r25', label: 'Sjukpenning / föräldrapenning (intäkt)', hint: '' }, { id: 'r26', label: 'Betald sjuklön till anställda', hint: '', sie: true }, { id: 'r27', label: 'Erhållen sjuklöneersättning från FK (intäkt)', hint: '' }] },
               { code: 'NE §G', name: '⚠ Egenavgifter föregående år — medgivna / påförda', sum: sgn(s3.dG), info: { type: 'amber', text: '⚠ Viktig rad som de flesta missar! Medgivna (R28) = vad du drog av på förra årets NE. Påförda (R29) = faktiska avgifter från slutskattebeskedet. Differensen justeras här.' }, fields: [{ id: 'r28', label: 'Avdrag medgivna egenavgifter föregående år', hint: 'Beloppet du drog av på förra NE · Från förra årets NE §4 E5', highlight: true }, { id: 'r29', label: 'Faktiskt påförda egenavgifter föregående år', hint: 'Från Skatteverkets slutskattebesked · Se R41 på NE-bilagan', highlight: true }, { id: 'r30', label: 'Justering (R28 − R29)', hint: 'Pos = drog av för mycket → återförs (ökar överskott) · Neg = extra avdrag · Auto', calc: true }] },
-              { code: 'NE §H', name: 'Övriga justeringar', sum: sgn(s3.dH), info: null, fields: [{ id: 'r31', label: 'Representation — ej avdragsgill del (6072)', hint: 'Auto från SIE · Max 180 kr exkl. moms / person', sie: (mapping?.autoR31||0) > 0 }, { id: 'r32', label: 'Böter och skattetillägg (IL 9:10)', hint: 'Auto från SIE · Aldrig avdragsgilla', sie: (mapping?.autoR32||0) > 0 }, { id: 'r33', label: 'Schablonintäkt (ISK / räntefond i rörelsen)', hint: '' }, { id: 'r34', label: 'Övriga skattemässiga tillägg', hint: '' }, { id: 'r35', label: 'Övriga skattemässiga avdrag', hint: '' }] },
+              { code: 'NE §H', name: 'Övriga justeringar', sum: sgn(s3.dH), info: null, fields: [{ id: 'r31', label: 'Representation — ej avdragsgill del (6072)', hint: 'Auto från SIE · Max 180 kr exkl. moms / person', sie: (mapping?.autoR31||0) > 0 },
+              { id: 'r14h', label: 'Bokförda intäkter som inte ska tas upp till beskattning (R14)', hint: 'T.ex. skattefria bidrag, försäkringsersättningar' }, { id: 'r32', label: 'Böter och skattetillägg (IL 9:10)', hint: 'Auto från SIE · Aldrig avdragsgilla', sie: (mapping?.autoR32||0) > 0 }, { id: 'r33', label: 'Schablonintäkt (ISK / räntefond i rörelsen)', hint: '' }, { id: 'r34', label: 'Övriga skattemässiga tillägg', hint: '' }, { id: 'r35', label: 'Övriga skattemässiga avdrag', hint: '' }] },
             ].map(acc => (
               <Accordion key={acc.code} code={acc.code} name={acc.name} sum={acc.sum}>
                 {acc.info && (
@@ -1456,7 +1502,7 @@ export default function DeklaraPage() {
             {/* ── RÄNTEFÖRDELNING (opt-in) ── */}
             <Accordion code="NE §D" name="Räntefördelning (frivillig)" sum={j.useRF ? sgn(s3.dD) : 'Ej vald'}>
               <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
-                Omvandlar näringsinkomst till kapitalinkomst (30% skatt). Max = 6,49% × kapitalunderlag + sparat fördelningsbelopp fg år (R25). Välj aktivt om du vill använda.
+                Omvandlar näringsinkomst till kapitalinkomst (30% skatt). Max = 7,96% × kapitalunderlag + sparat fördelningsbelopp fg år (R25). Välj aktivt om du vill använda.
               </div>
               <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDD8CF', display: 'flex', alignItems: 'center', gap: 10 }}>
                 <input type="checkbox" id="useRF" checked={!!j.useRF} onChange={e => { setJv('useRF', e.target.checked ? 1 : 0); if (!e.target.checked) { setJv('r19', 0) } }} style={{ cursor: 'pointer', width: 15, height: 15 }} />
@@ -1477,13 +1523,13 @@ export default function DeklaraPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R18</span>
-                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Max positiv räntefördelning (6,49% × R17 + R25)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto — kapitalunderlag + sparat fg år</div></div>
-                  <input readOnly value={Math.round((j.r17||0)*0.0649 + (j.r25_rf||0))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Max positiv räntefördelning (7,96% × R17 + R25)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto — kapitalunderlag + sparat fg år</div></div>
+                  <input readOnly value={Math.round((j.r17||0)*0.0796 + (j.r25_rf||0))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R19</span>
-                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Positiv räntefördelning att utnyttja</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Max {fmt(Math.round((j.r17||0)*0.0649))} kr · Beskattas som kapitalinkomst 30%</div></div>
-                  <input type="number" value={j.r19 || 0} onChange={e => setJv('r19', Math.min(parseInt(e.target.value)||0, Math.round((j.r17||0)*0.0649 + (j.r25_rf||0))))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Positiv räntefördelning att utnyttja</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Max {fmt(Math.round((j.r17||0)*0.0796))} kr · Beskattas som kapitalinkomst 30%</div></div>
+                  <input type="number" value={j.r19 || 0} onChange={e => setJv('r19', Math.min(parseInt(e.target.value)||0, Math.round((j.r17||0)*0.0796 + (j.r25_rf||0))))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R20</span>
@@ -1533,32 +1579,32 @@ export default function DeklaraPage() {
               {/* Header row */}
               {utlandResor.length > 0 && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 90px 28px', gap: 6, padding: '6px 14px', background: '#EDE8DF', borderBottom: '1px solid #DDD8CF' }}>
-                  {['Land (normalbelopp/dag)', 'Heldagar', 'Halvdagar', 'Avdrag', ''].map(h => (
+                  {['Land — normalbelopp/dag exkl. logi', 'Heldagar', 'Halvdagar *', 'Avdrag', ''].map(h => (
                     <div key={h} style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', color: '#9A9690' }}>{h}</div>
                   ))}
                 </div>
               )}
 
               {utlandResor.map((resa, i) => {
-                const nb = resa.land > 0 ? UTLAND_NORMALBELOPP[resa.land - 1] : null
+                const nb = resa.land > 0 ? utlandNormalbelopp[resa.land - 1] : null
                 const avdrag = nb ? Math.round(nb.belopp * resa.dagar + nb.belopp * 0.5 * resa.halvdagar) : 0
                 return (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 70px 90px 28px', gap: 6, padding: '8px 14px', borderBottom: '1px solid #DDD8CF', alignItems: 'center' }}>
                     <select
                       value={resa.land}
-                      onChange={e => updateUtland(i, 'land', parseInt(e.target.value))}
+                      onChange={e => updateUtland(i, 'land', Number(e.target.value) || 0)}
                       style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, padding: '5px 6px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', borderRadius: 2, outline: 'none', width: '100%' }}
                     >
                       <option value={0}>— Välj land —</option>
-                      {UTLAND_NORMALBELOPP.map((l, li) => (
+                      {utlandNormalbelopp.map((l, li) => (
                         <option key={li} value={li + 1}>{l.land} ({l.belopp} kr)</option>
                       ))}
                     </select>
                     <input type="number" min={0} value={resa.dagar}
-                      onChange={e => updateUtland(i, 'dagar', parseInt(e.target.value)||0)}
+                      onChange={e => updateUtland(i, 'dagar', Math.max(0, parseInt(e.target.value) || 0))}
                       style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '5px 8px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', textAlign: 'right', outline: 'none', borderRadius: 2, width: '100%' }} />
                     <input type="number" min={0} value={resa.halvdagar}
-                      onChange={e => updateUtland(i, 'halvdagar', parseInt(e.target.value)||0)}
+                      onChange={e => updateUtland(i, 'halvdagar', Math.max(0, parseInt(e.target.value) || 0))}
                       style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '5px 8px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', textAlign: 'right', outline: 'none', borderRadius: 2, width: '100%' }} />
                     <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, color: avdrag > 0 ? '#2D6A4F' : '#9A9690', textAlign: 'right', padding: '0 4px' }}>
                       {avdrag > 0 ? fmt(avdrag) : '—'}
@@ -1570,13 +1616,23 @@ export default function DeklaraPage() {
 
               {/* Add row + total */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px' }}>
-                <button onClick={addUtland} style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, padding: '6px 14px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#3A3832', cursor: 'pointer', borderRadius: 2, letterSpacing: '.06em' }}>+ Lägg till land/resa</button>
-                {utlandTotalt > 0 && (
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
-                    <span style={{ color: '#9A9690' }}>Totalt utlandstraktamente: </span>
-                    <strong style={{ color: '#2D6A4F' }}>{fmt(utlandTotalt)} kr</strong>
-                  </div>
-                )}
+                <div>
+                  <button onClick={addUtland} style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, padding: '6px 14px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#3A3832', cursor: 'pointer', borderRadius: 2, letterSpacing: '.06em' }}>+ Lägg till land/resa</button>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#9A9690', marginTop: 4 }}>* Halvdag: avresa efter kl 12:00 eller hemresa före kl 19:00 = halv normalbelopp</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                  {utlandTotalt > 0 && (
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 12 }}>
+                      <span style={{ color: '#9A9690' }}>Totalt: </span>
+                      <strong style={{ color: '#2D6A4F' }}>{fmt(utlandTotalt)} kr</strong>
+                    </div>
+                  )}
+                  {utlandResor.reduce((s, r) => s + r.dagar + r.halvdagar, 0) > 90 && (
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#92620A', background: '#FDF5E6', border: '1px solid #E8D4A0', padding: '2px 7px', borderRadius: 2 }}>
+                      ⚠ Över 90 dagar — SKV reducerar till 70% fr.o.m. dag 91
+                    </div>
+                  )}
+                </div>
               </div>
             </Accordion>
 
@@ -1697,6 +1753,13 @@ export default function DeklaraPage() {
             {/* Aktiv/passiv */}
             <Accordion code="EGA §1" name="Aktiv / passiv verksamhet" sum="">
               <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>Aktiv = du arbetar i verksamheten → egenavgifter 28,87%. Passiv → särskild löneskatt 24,26%.</div>
+              {skattemassigt > 0 && (
+                <div style={{ margin: '0 14px 8px', padding: '8px 12px', background: '#EFF7F2', border: '1px solid #B7D9C8', borderRadius: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked readOnly style={{ width: 14, height: 14, accentColor: '#2D6A4F', cursor: 'default' }} />
+                  <span style={{ fontSize: 12, color: '#2D6A4F', fontWeight: 500 }}>Beräkna och utnyttja maximalt avdrag för egenavgifter och särskild löneskatt</span>
+                  <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#9A9690', marginLeft: 4 }}>Auto</span>
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'center', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                 <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B' }}>E0</span>
                 <div style={{ fontSize: 13, color: '#3A3832' }}>Verksamhetstyp</div>
@@ -1912,6 +1975,52 @@ export default function DeklaraPage() {
             </div>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {/* ── SRU-VALIDERING ── */}
+              {(() => {
+                const v = validateSRU()
+                return (
+                  <div style={{ marginBottom: 16, border: `2px solid ${v.ok && v.warnings.length === 0 ? '#B7D9C8' : v.errors.length > 0 ? '#C0392B' : '#E8D4A0'}`, borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 14px', background: v.ok && v.warnings.length === 0 ? '#EFF7F2' : v.errors.length > 0 ? '#FDF0EE' : '#FDF5E6', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <span style={{ fontSize: 16 }}>{v.errors.length > 0 ? '⛔' : v.warnings.length > 0 ? '⚠' : '✅'}</span>
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 13, color: v.errors.length > 0 ? '#C0392B' : v.warnings.length > 0 ? '#92620A' : '#2D6A4F' }}>
+                          {v.errors.length > 0
+                            ? `${v.errors.length} fel — SRU-filen kan inte skickas in`
+                            : v.warnings.length > 0
+                              ? `${v.warnings.length} varning${v.warnings.length > 1 ? 'ar' : ''} — granska innan inlämning`
+                              : 'SRU-filen är redo att skicka in'}
+                        </div>
+                        {(v.errors.length > 0 || v.warnings.length > 0) && (
+                          <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 1 }}>
+                            {v.ok ? '' : 'Åtgärda felen nedan innan du laddar ner filen'}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {v.errors.length > 0 && (
+                      <div style={{ padding: '8px 14px', borderTop: '1px solid #E8C4BF' }}>
+                        {v.errors.map((e, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: 12, color: '#8B0000', borderBottom: i < v.errors.length - 1 ? '1px solid #F5DADA' : 'none' }}>
+                            <span style={{ flexShrink: 0 }}>⛔</span>
+                            <span>{e}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {v.warnings.length > 0 && (
+                      <div style={{ padding: '8px 14px', borderTop: `1px solid ${v.errors.length > 0 ? '#F5DADA' : '#E8D4A0'}` }}>
+                        {v.warnings.map((w, i) => (
+                          <div key={i} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: 12, color: '#92620A', borderBottom: i < v.warnings.length - 1 ? '1px solid #F5E6C0' : 'none' }}>
+                            <span style={{ flexShrink: 0 }}>⚠</span>
+                            <span>{w}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+
               {sieData && (
                 <button
                   onClick={saveDeklaration}
