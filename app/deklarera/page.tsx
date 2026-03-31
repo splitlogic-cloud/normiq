@@ -677,8 +677,8 @@ export default function DeklaraPage() {
 
       // Intäkter (bevarar tecken — negativ intäkt är OK)
       u(7400, fv('R1')),
-      fv('R2') ? u(7410, fv('R2')) : '',
-      fv('R3') ? u(7420, fv('R3')) : '',
+      fv('R2') > 0 ? u(7410, fv('R2')) : '',  // Momsfria intäkter (bara positiva)
+      // 7420 ej giltigt SRU-fält i NE-2025P4 — ränteintäkter ingår ej
 
       // Kostnader
       sumKost ? u(7501, sumKost) : '',
@@ -752,7 +752,7 @@ export default function DeklaraPage() {
         u(8000, 'X'),
         ega.sum ? u(8009, Math.abs(ega.sum)) : '',
         ega.ned ? u(8011, Math.abs(ega.ned)) : '',
-        u(7714, Math.round(r47 / 3)),  // R43 25%-avdrag = R47/3 (Skatteverkets formel)
+        u(7714, Math.floor(r47 / 3)),  // R43 25%-avdrag = R47/3 (floor = SKV:s metod)
         u(7630, r47),
       ] : [
         // Underskott — Visma: 7730 = underskottsbelopp, 8012 = samma, 7601 = kvarstående
