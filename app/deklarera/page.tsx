@@ -236,6 +236,13 @@ function calcStep3(base: number, vals: Record<string, number>) {
   // §D Räntefördelning — only if user opted in
   const dD = g('useRF') ? g('r20') - g('r19') : 0
   const dE = -Math.min(g('r21'), Math.max(0, base))
+  // R45 Allmänt avdrag — kvittning mot tjänst (konstnärlig/nystartad, max 70% × underskott, max 100 000 kr)
+  // R46 Underskott i kapital — kvittning mot kapitalvinst
+  // Dessa reducerar underskottet som förs till INK1 ruta 10.2 (rullas EJ vidare)
+  const r45max = g('r45_konstnärlig') === 1   // checkbox: konstnärlig eller nystartad (max 5 år)
+    ? Math.min(Math.round(Math.abs(base + dE) * 0.70), 100000) : 0
+  const r45 = Math.min(g('r45_belopp') || 0, r45max)
+  const r46 = g('r46_belopp') || 0
   const dF = g('r25') + g('r27') - g('r24') - g('r26')
   // SLP = särskild löneskatt på pensionssparavdrag 24,26% × R24 — KOSTNAD (minskar överskottet)
   const dSLP = g('r24') > 0 ? -Math.round(g('r24') * 0.2426) : 0
@@ -251,7 +258,7 @@ function calcStep3(base: number, vals: Record<string, number>) {
   const hkAvdrag = g('hemmakontor') + g('hemmakontor_internet')
   const dI = -resorAvdrag   // maps to NE R22
   const dJ = -hkAvdrag      // maps to NE R16
-  return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, dSLP, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ + dSLP) }
+  return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, dSLP, r45, r46, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ + dSLP) }
 }
 
 function calcEga(base: number, passiv: boolean, extraNed: number = 0, kommunalskattPct: number = 32.0) {
@@ -809,9 +816,17 @@ export default function DeklaraPage() {
         u(7714, Math.floor(r47 / 3)),  // R43 25%-avdrag = R47/3 (floor = SKV:s metod)
         u(7630, r47),
       ] : [
-        // Underskott — Visma: 7730 = underskottsbelopp, 8012 = samma, 7601 = kvarstående
-        u(7730, Math.abs(r47)),  // Underskott av aktiv näring → INK1 10.2
-        u(8012, Math.abs(r47)),  // Samma belopp
+        // Underskott
+        (() => {
+          const r45val = j.r45_konstnärlig === 1 ? (j.r45_belopp || Math.min(Math.round(Math.abs(r47)*0.70), 100000)) : 0
+          const r46val = j.r46_aktiv === 1 ? (j.r46_belopp || 0) : 0
+          const kvar = Math.max(0, Math.abs(r47) - r45val - r46val)
+          return [
+            kvar > 0 ? u(7730, kvar) : '',          // R48 Kvarstående underskott → INK1 10.2
+            r45val > 0 ? u(7880, r45val) : '',       // R45 Allmänt avdrag → INK1 14.1
+            r46val > 0 ? u(7890, r46val) : '',       // R46 Kvittning kapital
+          ].filter(Boolean).join('\n')
+        })()
         // 7601 = kvarstående outnyttjat underskott (0 om allt utnyttjas)
       ]),
 
@@ -1093,7 +1108,7 @@ export default function DeklaraPage() {
             <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.12em', textTransform: 'uppercase', color: '#C0392B', marginBottom: 10 }}>Normiq Deklarera · Blankett NE</div>
             <h1 style={{ fontFamily: "'Playfair Display', Georgia, serif", fontSize: 38, fontWeight: 700, lineHeight: 1.12, marginBottom: 10 }}>Dags att deklarera</h1>
             <p style={{ fontSize: 14, color: '#6A6660', lineHeight: 1.65, marginBottom: 20, maxWidth: 460 }}>
-              Vi hämtar siffrorna direkt från din bokföring — du behöver inte skriva in ett enda tal manuellt.
+              Vi hämtar grundsiffrorna från din bokföring och guidar dig steg för steg genom avdrag och justeringar.
             </p>
 
             {/* Hur det fungerar */}
@@ -1671,7 +1686,9 @@ export default function DeklaraPage() {
 
             {/* Calc summary */}
             <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, marginTop: 20, overflow: 'hidden' }}>
-              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: sgn(s3.dD) }, { l: '§D Räntefördelning', v: j.useRF ? sgn(s3.dD) : '—' }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }, { l: '§I Resor & traktamente', v: sgn(s3.dI||0) }, { l: '§J Hemmakontor', v: sgn(s3.dJ||0) }, { l: 'SLP Pens.avgift (24,26% × R24)', v: (s3.dSLP||0) !== 0 ? sgn(s3.dSLP||0) : '—' }].map((row, i) => (
+              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: sgn(s3.dD) }, { l: '§D Räntefördelning', v: j.useRF ? sgn(s3.dD) : '—' }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }, { l: '§I Resor & traktamente', v: sgn(s3.dI||0) }, { l: '§J Hemmakontor', v: sgn(s3.dJ||0) }, { l: 'SLP Pens.avgift (24,26% × R24)', v: (s3.dSLP||0) !== 0 ? sgn(s3.dSLP||0) : '—' },
+                      { l: 'R45 Kvittning tjänst', v: (s3.r45||0) > 0 ? '−' + fmt(s3.r45||0) + ' kr' : '—' },
+                      { l: 'R46 Kvittning kapital', v: (s3.r46||0) > 0 ? '−' + fmt(s3.r46||0) + ' kr' : '—' }].map((row, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #DDD8CF', fontSize: 13 }}>
                   <span style={{ color: '#6A6660' }}>{row.l}</span>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500 }}>{row.v}</span>
@@ -1740,12 +1757,89 @@ export default function DeklaraPage() {
                   ⚠ Underskott av aktiv näring: {fmt(Math.abs(skattemassigt))} kr
                 </div>
                 <div style={{ fontSize: 13, color: '#6A3020', lineHeight: 1.65 }}>
-                  Skattemässigt underskott förs till <strong>INK1 ruta 10.2</strong> och rullas vidare.
-                  Ingen kommunalskatt eller egenavgifter beräknas. Underskottet kan kvittas mot
-                  överskott kommande år, eller mot tjänsteinkomst (70%) de första 5 åren.
+                  Underskottet rullas normalt vidare till nästa år (INK1 ruta 10.2).
+                  Men du kan välja att kvitta det mot tjänsteinkomst eller kapitalvinst — det kan sänka skatten redan i år.
                 </div>
                 <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#C0392B', marginTop: 10, padding: '8px 12px', background: 'rgba(192,57,43,.06)', borderLeft: '2px solid #C0392B' }}>
-                  SRU: #UPPGIFT 7730 {Math.abs(skattemassigt)} → INK1 #UPPGIFT 1202 {Math.abs(skattemassigt)}
+                  Underskott: {fmt(Math.abs(skattemassigt))} kr · SRU: #UPPGIFT 7730 {Math.abs(skattemassigt)}
+                </div>
+
+                {/* R45/R46 kvittning */}
+                <div style={{ marginTop: 12, borderTop: '1px solid #E8C4BF', paddingTop: 12 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13, color: '#1A1A18', marginBottom: 10 }}>Vill du kvitta underskottet?</div>
+
+                  {/* R45 — Allmänt avdrag mot tjänst */}
+                  <div style={{ background: '#F5F0E8', border: '1px solid #DDD8CF', borderRadius: 4, padding: '12px 14px', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                      <input type="checkbox" checked={j.r45_konstnärlig === 1}
+                        onChange={e => setJv('r45_konstnärlig', e.target.checked ? 1 : 0)}
+                        style={{ width: 15, height: 15, marginTop: 2, cursor: 'pointer', accentColor: '#1A1A18' }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A18' }}>R45 — Kvitta mot tjänsteinkomst (allmänt avdrag)</div>
+                        <div style={{ fontSize: 12, color: '#6A6660', marginTop: 2, lineHeight: 1.5 }}>
+                          Gäller om du driver <strong>konstnärlig verksamhet</strong> (utan tidsbegränsning) eller
+                          om det är ditt <strong>1–5 verksamhetsår</strong> (nystartad).
+                          Max 70% av underskottet, dock högst 100 000 kr. → INK1 ruta 14.1
+                        </div>
+                      </div>
+                    </div>
+                    {j.r45_konstnärlig === 1 && (() => {
+                      const maxR45 = Math.min(Math.round(Math.abs(skattemassigt) * 0.70), 100000)
+                      return (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10, alignItems: 'center', marginTop: 4 }}>
+                          <div style={{ fontSize: 12, color: '#6A6660' }}>
+                            Max avdrag: <strong>{fmt(maxR45)} kr</strong> (70% × {fmt(Math.abs(skattemassigt))} kr, max 100 000 kr)
+                          </div>
+                          <input type="number" min={0} max={maxR45}
+                            value={j.r45_belopp || maxR45}
+                            onChange={e => setJv('r45_belopp', Math.min(parseInt(e.target.value)||0, maxR45))}
+                            style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, padding: '6px 10px', background: '#fff', border: '1px solid #C8C3BA', textAlign: 'right', borderRadius: 2, outline: 'none', color: '#1A1A18' }} />
+                        </div>
+                      )
+                    })()}
+                  </div>
+
+                  {/* R46 — Kvittning i kapital */}
+                  <div style={{ background: '#F5F0E8', border: '1px solid #DDD8CF', borderRadius: 4, padding: '12px 14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8 }}>
+                      <input type="checkbox" checked={j.r46_aktiv === 1}
+                        onChange={e => setJv('r46_aktiv', e.target.checked ? 1 : 0)}
+                        style={{ width: 15, height: 15, marginTop: 2, cursor: 'pointer', accentColor: '#1A1A18' }} />
+                      <div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A18' }}>R46 — Kvitta mot kapitalvinst</div>
+                        <div style={{ fontSize: 12, color: '#6A6660', marginTop: 2, lineHeight: 1.5 }}>
+                          Om du har <strong>sålt en näringsfastighet eller näringsbostadsrätt</strong> med vinst,
+                          kan underskottet kvittas mot den vinsten. → INK1 kapital
+                        </div>
+                      </div>
+                    </div>
+                    {j.r46_aktiv === 1 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px', gap: 10, alignItems: 'center', marginTop: 4 }}>
+                        <div style={{ fontSize: 12, color: '#6A6660' }}>Belopp att kvitta (max underskottet {fmt(Math.abs(skattemassigt))} kr)</div>
+                        <input type="number" min={0} max={Math.abs(skattemassigt)}
+                          value={j.r46_belopp || 0}
+                          onChange={e => setJv('r46_belopp', Math.min(parseInt(e.target.value)||0, Math.abs(skattemassigt)))}
+                          style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, padding: '6px 10px', background: '#fff', border: '1px solid #C8C3BA', textAlign: 'right', borderRadius: 2, outline: 'none', color: '#1A1A18' }} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sammanställning */}
+                  {(j.r45_konstnärlig === 1 || j.r46_aktiv === 1) && (() => {
+                    const r45val = j.r45_konstnärlig === 1 ? (j.r45_belopp || Math.min(Math.round(Math.abs(skattemassigt)*0.70), 100000)) : 0
+                    const r46val = j.r46_aktiv === 1 ? (j.r46_belopp || 0) : 0
+                    const kvar = Math.abs(skattemassigt) - r45val - r46val
+                    return (
+                      <div style={{ marginTop: 10, padding: '10px 12px', background: '#EFF7F2', border: '1px solid #B7D9C8', borderRadius: 2, fontFamily: 'DM Mono, monospace', fontSize: 11 }}>
+                        <div style={{ color: '#2D6A4F', fontWeight: 600, marginBottom: 4 }}>Kvittningssammanställning</div>
+                        {r45val > 0 && <div>R45 Allmänt avdrag → tjänst: −{fmt(r45val)} kr</div>}
+                        {r46val > 0 && <div>R46 Kvittning kapital: −{fmt(r46val)} kr</div>}
+                        <div style={{ borderTop: '1px solid #B7D9C8', marginTop: 6, paddingTop: 6, color: kvar > 0 ? '#6A6660' : '#2D6A4F' }}>
+                          Kvarstående till INK1 10.2: {fmt(Math.max(0, kvar))} kr
+                        </div>
+                      </div>
+                    )
+                  })()}
                 </div>
               </div>
             ) : (
