@@ -1,10 +1,9 @@
 /**
  * Normiq — Automatisk källuppdatering
  * =====================================
- * Inngest-jobb som körs varje natt kl 02:00.
- * Hämtar ny lagtext från Riksdagen + Skatteverket,
- * jämför med befintligt innehåll via hash,
- * och indexerar om bara det som ändrats.
+ * Använder Riksdagens officiella API för lagtext
+ * och SKV rättslig vägledning för skatteinfo.
+ * Körs varje natt kl 02:00 via Inngest cron.
  */
 
 import { inngest } from '@/lib/inngest'
@@ -13,140 +12,118 @@ import { createClient } from '@supabase/supabase-js'
 import { createHash } from 'crypto'
 import { Resend } from 'resend'
 
-// ── KLIENTER ──────────────────────────────────────────────────────────────
-// Initieras inuti funktionen för att säkerställa att env-variabler är laddade
+// ── KÄLLOR ────────────────────────────────────────────────────────────────
 
-function getClients() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
-  const resend = new Resend(process.env.RESEND_API_KEY!)
-  return { supabase, openai, resend }
-}
-
-// ── KONSTANTER ────────────────────────────────────────────────────────────
-
-const CHUNK_SIZE = 400
-const CHUNK_OVERLAP = 80
-const BATCH_SIZE = 5
-const DELAY_MS = 400
-
+// Riksdagen öppna data — lagtext via SFS-nummer
+// URL-format är stabilt och versionerat
 const LAGAR = [
-  { sfs: '1999:1229', kortnamn: 'IL',  lag: 'Inkomstskattelagen' },
-  { sfs: '2023:200',  kortnamn: 'ML',  lag: 'Mervärdesskattelagen' },
-  { sfs: '2011:1244', kortnamn: 'SFL', lag: 'Skatteförfarandelagen' },
-  { sfs: '1999:1078', kortnamn: 'BFL', lag: 'Bokföringslagen' },
-  { sfs: '2005:551',  kortnamn: 'ABL', lag: 'Aktiebolagslagen' },
+  { sfs: '1999:1229', ref: 'IL',  namn: 'Inkomstskattelagen' },
+  { sfs: '2023:200',  ref: 'ML',  namn: 'Mervärdesskattelagen' },
+  { sfs: '2011:1244', ref: 'SFL', namn: 'Skatteförfarandelagen' },
+  { sfs: '1999:1078', ref: 'BFL', namn: 'Bokföringslagen' },
+  { sfs: '2005:551',  ref: 'ABL', namn: 'Aktiebolagslagen' },
 ]
 
-const SKV_SIDOR = [
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/moms.4.html', ref: 'SKV moms', rubrik: 'Skatteverkets momsregler', lag: 'Skatteverkets vägledning' },
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/representation.4.html', ref: 'SKV representation', rubrik: 'Representation — avdragsregler', lag: 'Skatteverkets vägledning' },
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/traktamenteocharesersattning.4.html', ref: 'SKV traktamente', rubrik: 'Traktamente och reseersättning', lag: 'Skatteverkets vägledning' },
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/arbetsgivare/lonochersattning/personalfrmaner.4.html', ref: 'SKV personalförmåner', rubrik: 'Personalförmåner', lag: 'Skatteverkets vägledning' },
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/skatterochavdrag/avdragforhemmakontorocharbetsrum.4.html', ref: 'SKV hemkontor', rubrik: 'Hemkontor och arbetsrum', lag: 'Skatteverkets vägledning' },
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/foretaaetslagsochbolagsformer/aktiebolag/utdelningochloneriactiebolag.4.html', ref: 'SKV utdelning', rubrik: 'Utdelning och löner i aktiebolag', lag: 'Skatteverkets vägledning' },
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/bokforing.4.html', ref: 'SKV bokföring', rubrik: 'Bokföring', lag: 'Skatteverkets vägledning' },
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/moms/momssatser.4.html', ref: 'SKV momssatser', rubrik: 'Momssatser — gällande regler', lag: 'Skatteverkets vägledning' },
-  { url: 'https://www.skatteverket.se/foretagochorganisationer/moms/momsrestaurang.4.html', ref: 'SKV restaurangmoms', rubrik: 'Moms på restaurang och take away', lag: 'Skatteverkets vägledning' },
+// SKV rättslig vägledning — stabila avsnitt-URL:er
+// Hämtas från www4.skatteverket.se/rattsligvagledning som har stabil struktur
+const SKV_VAGLEDNING = [
+  { ref: 'SKV-moms-allmant',      url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/2940.html',   rubrik: 'Moms — allmänt' },
+  { ref: 'SKV-momssatser',        url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/2941.html',   rubrik: 'Momssatser' },
+  { ref: 'SKV-representation',    url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1508.html',   rubrik: 'Representation' },
+  { ref: 'SKV-traktamente',       url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1600.html',   rubrik: 'Traktamente' },
+  { ref: 'SKV-personalformaner',  url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1400.html',   rubrik: 'Personalförmåner' },
+  { ref: 'SKV-utdelning-3-12',    url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/3300.html',   rubrik: 'Utdelning fåmansföretag 3:12' },
+  { ref: 'SKV-bokforing',         url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/200.html',    rubrik: 'Bokföring' },
+  { ref: 'SKV-avdrag-naringsliv', url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1100.html',   rubrik: 'Avdrag i näringsverksamhet' },
 ]
+
+// ── INSTÄLLNINGAR ─────────────────────────────────────────────────────────
+
+const CHUNK_SIZE    = 400
+const CHUNK_OVERLAP = 80
+const BATCH_SIZE    = 5
+const DELAY_MS      = 400
 
 // ── HJÄLPFUNKTIONER ───────────────────────────────────────────────────────
 
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 function chunkText(text: string): string[] {
   const words = text.split(/\s+/).filter(Boolean)
   const chunks: string[] = []
-  let i = 0
-  while (i < words.length) {
-    const chunk = words.slice(i, i + CHUNK_SIZE).join(' ')
-    if (chunk.trim().length > 30) chunks.push(chunk.trim())
-    i += CHUNK_SIZE - CHUNK_OVERLAP
+  for (let i = 0; i < words.length; i += CHUNK_SIZE - CHUNK_OVERLAP) {
+    const chunk = words.slice(i, i + CHUNK_SIZE).join(' ').trim()
+    if (chunk.length > 50) chunks.push(chunk)
   }
   return chunks
 }
 
-function hashContent(text: string): string {
+function hashText(text: string): string {
   return createHash('sha256').update(text).digest('hex').slice(0, 16)
 }
 
-function extractTextFromHtml(html: string): string {
+function stripHtml(html: string): string {
   return html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
-    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<header[\s\S]*?<\/header>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&#\d+;/g, ' ')
-    .replace(/\s{3,}/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim()
 }
 
-async function fetchUrl(url: string, timeout = 25000): Promise<string> {
+async function fetchText(url: string): Promise<string> {
   try {
     const res = await fetch(url, {
       headers: {
-        'User-Agent': 'Normiq/2.0 (normiq.se; legal-text indexing)',
-        'Accept': 'text/html,application/xhtml+xml',
+        'User-Agent': 'Normiq/2.0 (normiq.se; legal indexing)',
+        'Accept': 'text/html',
         'Accept-Language': 'sv-SE,sv;q=0.9',
       },
-      signal: AbortSignal.timeout(timeout),
+      signal: AbortSignal.timeout(20000),
     })
     if (!res.ok) return ''
-    const html = await res.text()
-    return extractTextFromHtml(html)
+    return stripHtml(await res.text())
   } catch {
     return ''
   }
 }
 
-async function fetchRiksdagen(sfs: string): Promise<string> {
-  const slug = sfs.replace(':', '-')
-  const urls = [
-    `https://rkrattsbaser.gov.se/sfst?bet=${sfs}`,
-    `https://www.riksdagen.se/sv/dokument-och-lagar/dokument/svensk-forfattningssamling/${slug}/`,
-    `https://data.riksdagen.se/dokument/${slug}.html`,
-  ]
-  for (const url of urls) {
-    const text = await fetchUrl(url)
-    if (text.length > 500) return text
-    await sleep(500)
-  }
-  return ''
+// Hämtar lagtext via Riksdagen rkrattsbaser — det som bekräftat fungerar
+async function fetchLag(sfs: string): Promise<string> {
+  const url = `https://rkrattsbaser.gov.se/sfst?bet=${sfs}`
+  return fetchText(url)
 }
 
-type IndexResult = {
+// ── KÄRN-LOGIK: indexera en källa ─────────────────────────────────────────
+
+async function indexSource(params: {
   ref: string
-  status: 'updated' | 'unchanged' | 'failed'
-  chunks?: number
-  error?: string
-}
+  text: string
+  url: string
+  rubrik: string
+  lag: string
+}): Promise<{ ref: string; status: string; chunks: number; error: string }> {
+  const { ref, text, url, rubrik, lag } = params
 
-async function processSource(
-  ref: string,
-  text: string,
-  url: string,
-  metadata: { ref: string; rubrik: string; lag: string }
-): Promise<IndexResult> {
-  const { supabase, openai } = getClients()
-
-  if (!text || text.length < 200) {
-    return { ref, status: 'failed', error: `För lite text (${text.length} tecken)` }
+  if (!text || text.length < 300) {
+    return { ref, status: 'failed', chunks: 0, error: `För lite text: ${text.length} tecken` }
   }
 
-  const hash = hashContent(text)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
-  // Kolla om innehållet ändrats
+  const hash = hashText(text)
+
+  // Kolla om oförändrad
   const { data: existing } = await supabase
     .from('source_versions')
     .select('content_hash')
@@ -154,49 +131,49 @@ async function processSource(
     .single()
 
   if (existing?.content_hash === hash) {
-    return { ref, status: 'unchanged' }
+    return { ref, status: 'unchanged', chunks: 0, error: '' }
   }
 
-  // Ta bort gamla chunks
+  // Radera gamla chunks
   await supabase.from('documents').delete().eq('metadata->>ref', ref)
 
+  // Chunka och embedda
   const chunks = chunkText(text)
   let saved = 0
 
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE)
     try {
-      const res = await openai.embeddings.create({
+      const embRes = await openai.embeddings.create({
         model: 'text-embedding-3-small',
         input: batch,
       })
       const rows = batch.map((content, j) => ({
         content,
-        metadata,
-        embedding: res.data[j].embedding,
+        metadata: { ref, rubrik, lag },
+        embedding: embRes.data[j].embedding,
       }))
       const { error } = await supabase.from('documents').insert(rows)
       if (!error) saved += batch.length
-    } catch (err) {
-      console.error(`Embedding fel batch ${i}: ${err}`)
+      else console.error(`Insert error: ${error.message}`)
+    } catch (e) {
+      console.error(`Embed error batch ${i}: ${e}`)
     }
     await sleep(DELAY_MS)
   }
 
-  // Spara ny hash
-  await supabase
-    .from('source_versions')
-    .upsert({
-      ref,
-      content_hash: hash,
-      url,
-      updated_at: new Date().toISOString(),
-    })
+  // Spara hash
+  await supabase.from('source_versions').upsert({
+    ref,
+    content_hash: hash,
+    url,
+    updated_at: new Date().toISOString(),
+  })
 
-  return { ref, status: 'updated', chunks: saved }
+  return { ref, status: saved > 0 ? 'updated' : 'failed', chunks: saved, error: saved === 0 ? 'Inga chunks sparade' : '' }
 }
 
-// ── INNGEST-FUNKTIONER ────────────────────────────────────────────────────
+// ── INNGEST-FUNKTION ──────────────────────────────────────────────────────
 
 export const updateSources = inngest.createFunction(
   {
@@ -207,98 +184,94 @@ export const updateSources = inngest.createFunction(
   },
   async ({ step }) => {
 
-    // Steg 1: Lagar från Riksdagen
-    const lagarResults: IndexResult[] = await step.run('index-lagar', async () => {
-      const results: IndexResult[] = []
-      for (const lag of LAGAR) {
-        const text = await fetchRiksdagen(lag.sfs)
-        const result = await processSource(
-          lag.kortnamn,
-          text,
-          `https://rkrattsbaser.gov.se/sfst?bet=${lag.sfs}`,
-          { ref: lag.kortnamn, rubrik: lag.lag, lag: lag.lag }
-        )
-        results.push(result)
-        await sleep(1000)
-      }
-      return results
-    })
+    // Steg 1: En lag i taget (undviker timeout)
+    const ilResult = await step.run('index-IL', () =>
+      fetchLag('1999:1229').then(text => indexSource({ ref: 'IL', text, url: 'https://rkrattsbaser.gov.se/sfst?bet=1999:1229', rubrik: 'Inkomstskattelagen', lag: 'Inkomstskattelagen' }))
+    )
+    const mlResult = await step.run('index-ML', () =>
+      fetchLag('2023:200').then(text => indexSource({ ref: 'ML', text, url: 'https://rkrattsbaser.gov.se/sfst?bet=2023:200', rubrik: 'Mervärdesskattelagen', lag: 'Mervärdesskattelagen' }))
+    )
+    const sflResult = await step.run('index-SFL', () =>
+      fetchLag('2011:1244').then(text => indexSource({ ref: 'SFL', text, url: 'https://rkrattsbaser.gov.se/sfst?bet=2011:1244', rubrik: 'Skatteförfarandelagen', lag: 'Skatteförfarandelagen' }))
+    )
+    const bflResult = await step.run('index-BFL', () =>
+      fetchLag('1999:1078').then(text => indexSource({ ref: 'BFL', text, url: 'https://rkrattsbaser.gov.se/sfst?bet=1999:1078', rubrik: 'Bokföringslagen', lag: 'Bokföringslagen' }))
+    )
+    const ablResult = await step.run('index-ABL', () =>
+      fetchLag('2005:551').then(text => indexSource({ ref: 'ABL', text, url: 'https://rkrattsbaser.gov.se/sfst?bet=2005:551', rubrik: 'Aktiebolagslagen', lag: 'Aktiebolagslagen' }))
+    )
 
-    // Steg 2: SKV-sidor
-    const skvResults: IndexResult[] = await step.run('index-skv', async () => {
-      const results: IndexResult[] = []
-      for (const sida of SKV_SIDOR) {
-        const text = await fetchUrl(sida.url)
-        const result = await processSource(
-          sida.ref,
+    // Steg 2: SKV rättslig vägledning — en i taget
+    const skvResults: Record<string, { ref: string; status: string; chunks: number; error: string }> = {}
+    for (const sida of SKV_VAGLEDNING) {
+      const result = await step.run(`index-${sida.ref}`, () =>
+        fetchText(sida.url).then(text => indexSource({
+          ref: sida.ref,
           text,
-          sida.url,
-          { ref: sida.ref, rubrik: sida.rubrik, lag: sida.lag }
-        )
-        results.push(result)
-        await sleep(500)
-      }
-      return results
-    })
+          url: sida.url,
+          rubrik: sida.rubrik,
+          lag: 'Skatteverkets vägledning',
+        }))
+      )
+      skvResults[sida.ref] = result
+    }
 
     // Steg 3: Rapport
-    const reportResult = await step.run('send-report', async () => {
-      const { resend } = getClients()
-      const allResults = [...lagarResults, ...skvResults]
+    await step.run('send-report', async () => {
+      const lagResults = [ilResult, mlResult, sflResult, bflResult, ablResult]
+      const allResults = [...lagResults, ...Object.values(skvResults)]
 
-      const updated = allResults.filter(r => r.status === 'updated')
-      const failed = allResults.filter(r => r.status === 'failed')
+      const updated  = allResults.filter(r => r.status === 'updated')
+      const failed   = allResults.filter(r => r.status === 'failed')
       const unchanged = allResults.filter(r => r.status === 'unchanged')
-      const totalChunks = updated.reduce((sum, r) => sum + (r.chunks ?? 0), 0)
+      const totalChunks = updated.reduce((s, r) => s + r.chunks, 0)
 
       if (updated.length === 0 && failed.length === 0) {
         return { message: 'Inga ändringar', unchanged: unchanged.length }
       }
 
-      const subject = updated.length > 0
-        ? `✓ Normiq: ${updated.length} källfiler uppdaterade (${totalChunks} chunks)`
-        : `⚠ Normiq: ${failed.length} källfiler misslyckades`
-
+      const resend = new Resend(process.env.RESEND_API_KEY!)
       await resend.emails.send({
         from: 'Normiq <hej@normiq.se>',
         to: 'hej@normiq.se',
-        subject,
+        subject: updated.length > 0
+          ? `✓ Normiq: ${updated.length} källfiler uppdaterade (${totalChunks} chunks)`
+          : `⚠ Normiq: ${failed.length} källfiler misslyckades`,
         html: `
-          <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; padding: 40px 32px; background: #F5F3EE;">
-            <div style="font-size: 24px; font-weight: 600; color: #0A0A0C; margin-bottom: 24px; font-family: monospace;">
-              normi<span style="color: #C0321A;">q</span>
+          <div style="font-family:Georgia,serif;max-width:600px;margin:0 auto;padding:40px 32px;background:#F5F3EE">
+            <div style="font-family:monospace;font-size:24px;font-weight:600;color:#0A0A0C;margin-bottom:24px">
+              normi<span style="color:#C0321A">q</span>
             </div>
-            <h2 style="font-size: 20px; color: #0A0A0C; margin-bottom: 20px;">
+            <h2 style="font-size:20px;color:#0A0A0C;margin-bottom:20px">
               Källuppdatering — ${new Date().toLocaleDateString('sv-SE')}
             </h2>
-
             ${updated.length > 0 ? `
-            <div style="background: #EEF6F1; border: 1px solid #BFD9CC; border-radius: 6px; padding: 16px 20px; margin-bottom: 16px;">
-              <div style="font-family: monospace; font-size: 11px; color: #2E6644; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px;">
+            <div style="background:#EEF6F1;border:1px solid #BFD9CC;border-radius:6px;padding:16px 20px;margin-bottom:16px">
+              <div style="font-family:monospace;font-size:11px;color:#2E6644;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">
                 Uppdaterat (${updated.length}) — ${totalChunks} chunks
               </div>
-              ${updated.map(r => `<div style="font-size: 13px; color: #2E6644; margin: 4px 0;">✓ ${r.ref} — ${r.chunks} chunks</div>`).join('')}
+              ${updated.map(r => `<div style="font-size:13px;color:#2E6644;margin:4px 0">✓ ${r.ref} — ${r.chunks} chunks</div>`).join('')}
             </div>` : ''}
-
             ${failed.length > 0 ? `
-            <div style="background: #FDF4F3; border: 1px solid rgba(192,50,26,.2); border-radius: 6px; padding: 16px 20px; margin-bottom: 16px;">
-              <div style="font-family: monospace; font-size: 11px; color: #C0321A; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px;">
+            <div style="background:#FDF4F3;border:1px solid rgba(192,50,26,.2);border-radius:6px;padding:16px 20px;margin-bottom:16px">
+              <div style="font-family:monospace;font-size:11px;color:#C0321A;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">
                 Misslyckades (${failed.length})
               </div>
-              ${failed.map(r => `<div style="font-size: 13px; color: #C0321A; margin: 4px 0;">✕ ${r.ref}${r.error ? ` — ${r.error}` : ''}</div>`).join('')}
+              ${failed.map(r => `<div style="font-size:13px;color:#C0321A;margin:4px 0">✕ ${r.ref}${r.error ? ` — ${r.error}` : ''}</div>`).join('')}
             </div>` : ''}
-
-            <div style="font-family: monospace; font-size: 11px; color: #CCC; margin-top: 24px;">
+            <div style="font-family:monospace;font-size:11px;color:#CCC;margin-top:24px">
               Oförändrade: ${unchanged.length} · ${new Date().toISOString()}
             </div>
-          </div>
-        `,
+          </div>`,
       })
 
       return { updated: updated.length, failed: failed.length, unchanged: unchanged.length, totalChunks }
     })
 
-    return { lagar: lagarResults, skv: skvResults, report: reportResult }
+    return {
+      IL: ilResult, ML: mlResult, SFL: sflResult, BFL: bflResult, ABL: ablResult,
+      skv: skvResults,
+    }
   }
 )
 
@@ -309,9 +282,6 @@ export const triggerSourceUpdate = inngest.createFunction(
     triggers: [{ event: 'normiq/sources.update' }],
   },
   async ({ step }) => {
-    await step.invoke('run-update', {
-      function: updateSources,
-      data: {},
-    })
+    await step.invoke('run-update', { function: updateSources, data: {} })
   }
 )
