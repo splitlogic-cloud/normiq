@@ -258,36 +258,55 @@ function calcStep3(base: number, vals: Record<string, number>) {
   const hkAvdrag = g('hemmakontor') + g('hemmakontor_internet')
   const dI = -resorAvdrag   // maps to NE R22
   const dJ = -hkAvdrag      // maps to NE R16
-  return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, dSLP, r45, r46, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ + dSLP) }
+  const skattemassigt = base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ + dSLP
+  return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, dSLP, r45, r46, tot: skattemassigt }
 }
 
-function calcEga(base: number, passiv: boolean, extraNed: number = 0, kommunalskattPct: number = 32.0) {
-  // Vid underskott: ingen EGA, inget 25%-avdrag
-  // slutlig = base (negativt) = underskott av aktiv näring → INK1 ruta 10.2
-  if (base <= 0) {
-    return { sum: 0, ned: 0, netto: 0, avd25: 0, slutlig: base,
-      kom: 0, beg: 0, statlig: 0, ef: 0, rf: 0, tot: 0, isUnderskott: true }
+// ─── EGA-kalkyl: SKV-korrekt formel ────────────
+// R43 = floor((R42 + R40 - R41 + R44) * 0.25)   [verifierat mot Visma]
+// R47 = (R42 + R40 - R41 + R44) - R43
+// EGA-underlag = R42 (skattemässigt INKLUSIVE dG)
+function calcEga(
+  r42: number,           // Skattemässigt överskott (inkl. dG=R40−R41-effekt från calcStep3)
+  passiv: boolean,
+  extraNed: number = 0,
+  kommunalskattPct: number = 32.0,
+  r40medg: number = 0,   // Medgivna EGA fg år (R40) — ökar R47-underlaget
+  r41paf: number = 0,    // Påförda EGA fg år (R41) — minskar R47-underlaget
+  r44sjuk: number = 0,   // Sjukpenning (R44) — ökar R47-underlaget
+) {
+  if (r42 <= 0) {
+    return { sum: 0, ned: 0, netto: 0, avd25: 0, r43: 0, slutlig: r42,
+      kom: 0, beg: 0, statlig: 0, tot: 0, isUnderskott: true }
   }
+
+  // Underlag för R43/R47 = R42 + R40 - R41 + R44
+  const underlag = r42 + r40medg - r41paf + r44sjuk
+
+  // R43 = floor(underlag * 0.25)  [SKV-verifierat, ej iterativt]
+  const r43 = Math.floor(underlag * 0.25)
+  const slutlig = underlag - r43   // R47 = Överskott → INK1 10.1
+
   if (passiv) {
-    const sls = Math.round(base * 0.2426)
-    const avd25 = Math.round(base * 0.25)
-    const slutlig = base - avd25
+    // Passiv: SLP 24,26% på R42 (inte på R47)
+    const sls = Math.round(r42 * 0.2426)
     const kom = Math.round(slutlig * (kommunalskattPct / 100))
     const beg = Math.round(slutlig * 0.00279)
     const statlig = slutlig > 598500 ? Math.round((slutlig - 598500) * 0.20) : 0
-    return { sum: sls, ned: 0, netto: sls, avd25, slutlig, kom, beg, statlig, ef: 0, rf: 0, tot: kom + beg + sls + statlig, isUnderskott: false }
+    return { sum: sls, ned: 0, netto: sls, avd25: r43, r43, slutlig, kom, beg, statlig, tot: kom + beg + sls + statlig, isUnderskott: false }
   }
-  const r = { ap: 0.1021, sj: 0.0364, fp: 0.026, ep: 0.006, as: 0.002, am: 0, al: 0.1162 }
-  const parts = Object.fromEntries(Object.entries(r).map(([k, v]) => [k, Math.round(base * v)]))
-  const sum = Object.values(parts).reduce((a, b) => a + b, 0)
-  const ned = Math.min(Math.round(base * 0.075), 15000)
+
+  // Aktiv: egenavgifter beräknas på R42
+  const rates = { ap: 0.1021, sj: 0.0364, fp: 0.026, ep: 0.006, as: 0.002, am: 0, al: 0.1162 }
+  const parts = Object.fromEntries(Object.entries(rates).map(([k, v]) => [k, Math.round(r42 * v)]))
+  const sum = Object.values(parts).reduce((a: number, b) => a + (b as number), 0)
+  const ned = Math.min(Math.round(r42 * 0.075), 15000)
   const netto = Math.max(0, sum - ned - extraNed)
-  const avd25 = Math.round(base * 0.25)
-  const slutlig = base - avd25
+
   const kom = Math.round(slutlig * (kommunalskattPct / 100))
   const beg = Math.round(slutlig * 0.00279)
   const statlig = slutlig > 598500 ? Math.round((slutlig - 598500) * 0.20) : 0
-  return { ...parts, sum, ned, netto, avd25, slutlig, kom, beg, statlig, ef: 0, rf: 0, tot: kom + beg + netto + statlig, isUnderskott: false }
+  return { ...parts, sum, ned, netto, avd25: r43, r43, slutlig, kom, beg, statlig, tot: kom + beg + netto + statlig, isUnderskott: false }
 }
 
 // ─── Formatting ──────────────────────────────
@@ -473,7 +492,10 @@ export default function DeklaraPage() {
   const jWithUtland = { ...j, utland_totalt: utlandTotalt }
   const s3 = calcStep3(bokf, jWithUtland)
   const skattemassigt = j.useManual ? (j.manualOverskott || 0) : s3.tot
-  const ega = calcEga(skattemassigt, passiv, extraNed, kommunalskatt)  // utlandTotalt added via j
+  // calcEga: skattemassigt (R42) INKLUDERAR redan dG (R40−R41 via calcStep3)
+  // Men R40/R41 ska OCKSÅ läggas till underlag för R47 separat (SKV-formel)
+  // Lösning: skicka skattemassigt direkt + r40/r41 så calcEga kan räkna rätt underlag
+  const ega = calcEga(skattemassigt, passiv, extraNed, kommunalskatt, j.r28||0, j.r29||0, j.r25||0)
 
   // Parse flow
   async function runParse(sie: SIEData, fname: string) {
@@ -828,7 +850,7 @@ export default function DeklaraPage() {
         // 8011 nedsättning EGA — Visma skickar ej, utelämnas
         // 8012 = kapitalunderlag expansionsfond
         j.r17 ? u(8012, Math.round(j.r17||0)) : '',
-        u(7714, Math.floor(r47 / 3)),  // R43 25%-avdrag = R47/3 (floor = SKV:s metod)
+        u(7714, ega.r43),  // R43 = floor(underlag * 0.25) [SKV-verifierat]
         u(7630, r47),
       ] : [
         // Underskott
@@ -1416,145 +1438,55 @@ export default function DeklaraPage() {
               Det som är <span style={{ color: '#2D6A4F', fontWeight: 500 }}>grönt</span> är förifyllt från din bokföring.
             </div>
 
-            {/* ── AVSTÄMNING ── */}
-            <div style={{ background: '#fff', border: `2px solid ${avstamningKlar ? '#B7D9C8' : '#C0392B'}`, borderRadius: 4, marginBottom: 24, overflow: 'hidden' }}>
-              <div style={{ padding: '12px 16px', background: avstamningKlar ? '#EFF7F2' : '#FDF0EE', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${avstamningKlar ? '#B7D9C8' : '#E8C4BF'}` }}>
-                <span style={{ fontSize: 16 }}>{avstamningKlar ? '✓' : '⚠'}</span>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13, color: avstamningKlar ? '#2D6A4F' : '#C0392B' }}>
-                    {avstamningKlar ? 'Avstämning klar — du kan gå vidare' : 'Snabbkoll — svara Ja eller Nej, tar 1 minut'}
-                  </div>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2, letterSpacing: '.04em' }}>
-                    Dessa poster är vanliga men missas ofta. Svara Ja eller Nej på varje — ange 0 om det inte är aktuellt.
+            {/* ── PROGRESS SNABBKOLL ── */}
+            {!avstamningKlar && (
+              <div style={{ background: '#FDF5E6', border: '1px solid #E8D4A0', borderRadius: 4, padding: '10px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+                <span style={{ fontSize: 14 }}>⚠</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#92620A' }}>Svara på Ja/Nej-frågorna i varje avsnitt nedan innan du kan gå vidare</div>
+                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>
+                    {Object.values(avstamning).filter(v => v !== null).length} av {Object.keys(avstamning).length} besvarade
                   </div>
                 </div>
-                <div style={{ marginLeft: 'auto', fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690' }}>
-                  {Object.values(avstamning).filter(v => v !== null).length}/{Object.keys(avstamning).length} besvarade
+                <div style={{ background: '#EDE8DF', borderRadius: 2, height: 6, width: 100, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: '#92620A', width: `${Object.values(avstamning).filter(v => v !== null).length / Object.keys(avstamning).length * 100}%`, transition: 'width .3s' }} />
                 </div>
               </div>
-
-              {[
-                {
-                  key: 'hemmakontor',
-                  icon: '🏠',
-                  title: 'Hemmakontor / arbetsrum i bostaden',
-                  desc: 'Har du ett rum hemma som du bara använder för jobbet? Du kan dra av 4 000 kr/år om du hyr, 2 000 kr om du äger.',
-                  jaAction: () => {},
-                  nejAction: () => setJv('hemmakontor', 0),
-                },
-                {
-                  key: 'traktamente',
-                  icon: '🚗',
-                  title: 'Resor & traktamente',
-                  desc: 'Har du kört din privata bil i jobbet, eller rest bort och ätit på Skatteverkets bekostnad? Det går att dra av 25 kr/mil och 290 kr/dag.',
-                  jaAction: () => {},
-                  nejAction: () => { setJv('resor_mil', 0); setJv('resor_trakt', 0); setJv('resor_trakt_manuell', 0) },
-                },
-                {
-                  key: 'pension',
-                  icon: '🏦',
-                  title: 'Pensionssparande / tjänstepension',
-                  desc: 'Har du satt in pengar till ett pensionssparande — privat pension (IPS) eller tjänstepension? Du kan dra av upp till 35% av årets vinst.',
-                  jaAction: () => {},
-                  nejAction: () => setJv('r24', 0),
-                },
-                {
-                  key: 'slp',
-                  icon: '📋',
-                  title: 'Särskild löneskatt på pensionssparavdrag',
-                  desc: 'Om du svarade Ja på pension ovan: det tillkommer en extra avgift på 24,26% av pensionsavdraget. Vi räknar ut det automatiskt.',
-                  jaAction: () => {},
-                  nejAction: () => {},
-                },
-                {
-                  key: 'sjuklon',
-                  icon: '🏥',
-                  title: 'Sjuklön & sjukpenning',
-                  desc: 'Har du anställda och betalat sjuklön? Eller fått sjuk- eller föräldrapenning från Försäkringskassan under året?',
-                  jaAction: () => {},
-                  nejAction: () => { setJv('r25', 0); setJv('r26', 0); setJv('r27', 0) },
-                },
-                {
-                  key: 'ega_fg',
-                  icon: '⚖',
-                  title: 'Egenavgifter föregående år — medgivna vs. påförda (§G)',
-                  desc: 'Titta på förra årets deklaration och slutskattebesked — stämde det förra årets skatteberäkning? Ange 0 om det var ditt första år eller om du är osäker.',
-                  jaAction: () => {},
-                  nejAction: () => { setJv('r28', 0); setJv('r29', 0) },
-                },
-                {
-                  key: 'underskott',
-                  icon: '📉',
-                  title: 'Outnyttjat underskott från föregående år (§E)',
-                  desc: 'Gick det minus förra året? Det outnyttjade underskottet kan minska din skatt i år. Titta på förra årets NE-bilaga rad R23. Ange 0 om det inte är aktuellt.',
-                  jaAction: () => {},
-                  nejAction: () => setJv('r21', 0),
-                },
-                {
-                  key: 'pfonder',
-                  icon: '🏛',
-                  title: 'Periodiseringsfonder — obligatorisk återföring eller årets avsättning (§B)',
-                  desc: 'Vill du "spara" en del av årets vinst och skjuta upp skatten? Max 30% av vinsten. Har du gjort det tidigare år (avsättningar äldre än 6 år måste återföras nu)? Ange 0 om du vill skippa detta.',
-                  jaAction: () => {},
-                  nejAction: () => { setJv('r10', 0); setJv('r11', 0); setJv('r12', 0); setJv('r13', 0) },
-                },
-                {
-                  key: 'ej_skattepliktig',
-                  icon: '🔕',
-                  title: 'Skattefria intäkter bokförda i resultaträkningen (R14)',
-                  desc: 'Har du bokfört intäkter som inte ska beskattas — t.ex. skattefria bidrag (Tillväxtverket, Almi), försäkringsersättningar, erhållna gåvor eller andra skattefria intäkter? De ska dras av här så de inte räknas med i överskottet.',
-                  jaAction: () => {},
-                  nejAction: () => setJv('r14h', 0),
-                },
-              ].map((item, idx, arr) => (
-                <div key={item.key} style={{ display: 'grid', gridTemplateColumns: '32px 1fr auto', gap: 12, padding: '13px 16px', borderBottom: idx < arr.length - 1 ? `1px solid ${avstamning[item.key] ? '#DDD8CF' : '#F0E8E8'}` : 'none', background: avstamning[item.key] === null ? '#FFFAFA' : '#fff', alignItems: 'start' }}>
-                  <span style={{ fontSize: 20, marginTop: 1 }}>{item.icon}</span>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#1A1A18', marginBottom: 3, display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {item.title}
-                      {avstamning[item.key] === null && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', background: '#FDF0EE', border: '1px solid #E8C4BF', padding: '1px 6px', letterSpacing: '.06em' }}>OBLIGATORISK</span>}
-                      {avstamning[item.key] === 'ja' && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#2D6A4F', background: '#EFF7F2', border: '1px solid #B7D9C8', padding: '1px 6px' }}>JA — fyll i nedan</span>}
-                      {avstamning[item.key] === 'nej' && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#9A9690', background: '#F5F0E8', border: '1px solid #DDD8CF', padding: '1px 6px' }}>NEJ — nollas</span>}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#6A6660', lineHeight: 1.55 }}>{item.desc}</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginTop: 2 }}>
-                    <button
-                      onClick={() => { setAv(item.key, 'ja'); item.jaAction() }}
-                      style={{ padding: '5px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', border: '1px solid', borderRadius: 2, letterSpacing: '.04em', background: avstamning[item.key] === 'ja' ? '#2D6A4F' : '#fff', color: avstamning[item.key] === 'ja' ? '#fff' : '#3A3832', borderColor: avstamning[item.key] === 'ja' ? '#2D6A4F' : '#C8C3BA', fontWeight: avstamning[item.key] === 'ja' ? 600 : 400 }}
-                    >Ja</button>
-                    <button
-                      onClick={() => { setAv(item.key, 'nej'); item.nejAction() }}
-                      style={{ padding: '5px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', border: '1px solid', borderRadius: 2, letterSpacing: '.04em', background: avstamning[item.key] === 'nej' ? '#6A6660' : '#fff', color: avstamning[item.key] === 'nej' ? '#fff' : '#3A3832', borderColor: avstamning[item.key] === 'nej' ? '#6A6660' : '#C8C3BA', fontWeight: avstamning[item.key] === 'nej' ? 600 : 400 }}
-                    >Nej</button>
-                  </div>
-                </div>
-              ))}
+            )}
+            {/* GAMMAL CHECKLISTA BORTTAGEN — frågor inbyggda i varje accordion */}
+            <div style={{ display: 'none' }}>
             </div>
-
-            {/* Summary */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#DDD8CF', border: '1px solid #DDD8CF', marginBottom: 22 }}>
-              {[{ l: 'Bokfört', v: fmt(bokf) + ' kr' }, { l: 'Avskr.', v: sgn(s3.dA) }, { l: 'Fond/fördelning', v: sgn(s3.dB + s3.dC + (j.useRF ? s3.dD : 0)) }, { l: 'Avdrag/tillägg', v: sgn(s3.dE + s3.dF + s3.dG + s3.dH + (s3.dI||0) + (s3.dJ||0)) }, { l: skattemassigt >= 0 ? 'Skattemässigt' : 'Underskott', v: fmt(Math.abs(skattemassigt)) + ' kr', c: skattemassigt < 0 ? '#C0392B' : undefined }].map(s => (
-                <div key={s.l} style={{ background: '#fff', padding: '14px 16px' }}>
-                  <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690', marginBottom: 5 }}>{s.l}</div>
-                  <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 17, fontWeight: 700 }}>{s.v}</div>
-                </div>
-              ))}
             </div>
 
             {/* Accordions */}
             {[
               { code: 'NE §A', name: 'Avskrivningar & nedskrivningar', sum: sgn(s3.dA), info: { type: 'blue', text: 'Räkenskapsenlig avskrivning max 30% av ingående UB. Differens mot bokförd = skattemässigt tillägg (+) eller avdrag (−).' }, fields: [{ id: 'r5', label: 'Bokförda avskrivningar på inventarier', hint: 'Konto 7810–7839 i SIE', sie: true }, { id: 'r6', label: 'Skattemässigt tillåtna avskrivningar', hint: 'Max 30% × ingående UB inventarier', sie: true }, { id: 'r7', label: 'Skillnad (R6 − R5)', hint: 'Auto', calc: true }, { id: 'r8', label: 'Nedskrivning lager (återföring)', hint: '' }, { id: 'r9', label: 'Övriga skattemässiga tillägg', hint: 'Omedelbart avdrag inventarier < 28 650 kr' }] },
-              { code: 'NE §B', name: 'Periodiseringsfond', sum: sgn(s3.dB), info: { type: 'amber', text: `⚡ Max avsättning: 30% × ${fmt(bokf)} kr = ${fmt(Math.floor(bokf * 0.30))} kr. Skattebesparning ca ${fmt(Math.round(Math.floor(bokf * 0.30) * 0.30))} kr.` }, fields: [{ id: 'r10', label: 'Årets avsättning till periodiseringsfond', hint: 'Max 30% av skattemässigt överskott · Frivillig' }, { id: 'r11', label: 'Obligatorisk återföring (tax.år 2019)', hint: 'Senaste möjliga återföring' }, { id: 'r12', label: 'Frivillig återföring (tax.år 2020–2024)', hint: '' }, { id: 'r13', label: 'Ränta på kvarvarande fond (1,50%)', hint: '1,50% × ingående fondbalans · Intäkt' }] },
+              { code: 'NE §B', name: 'Periodiseringsfond', sum: sgn(s3.dB), avKey: 'pfonder', avQ: 'Har du periodiseringsfonder att återföra, eller vill du sätta av i år (max 30%)?', avNej: () => { setJv('r10',0); setJv('r11',0); setJv('r12',0); setJv('r13',0) }, info: { type: 'amber', text: `⚡ Max avsättning: 30% × ${fmt(bokf)} kr = ${fmt(Math.floor(bokf * 0.30))} kr. Skattebesparning ca ${fmt(Math.round(Math.floor(bokf * 0.30) * 0.30))} kr.` }, fields: [{ id: 'r10', label: 'Årets avsättning till periodiseringsfond', hint: 'Max 30% av skattemässigt överskott · Frivillig' }, { id: 'r11', label: 'Obligatorisk återföring (tax.år 2019)', hint: 'Senaste möjliga återföring' }, { id: 'r12', label: 'Frivillig återföring (tax.år 2020–2024)', hint: '' }, { id: 'r13', label: 'Ränta på kvarvarande fond (1,50%)', hint: '1,50% × ingående fondbalans · Intäkt' }] },
               { code: 'NE §C', name: 'Expansionsfond', sum: sgn(s3.dC), info: { type: 'blue', text: '20,6% fondskatt vid avsättning. Max = justerat eget kapital.' }, fields: [{ id: 'r14', label: 'Avsättning till expansionsfond', hint: '20,6% fondskatt · Frivillig' }, { id: 'r15', label: 'Minskning av expansionsfond', hint: '' }, { id: 'r16', label: 'Expansionsfondsskatt (20,6% × R14)', hint: 'Auto', calc: true }] },
               // NE §D Räntefördelning — rendered separately with opt-in below
-              { code: 'NE §E', name: 'Outnyttjat underskott', sum: sgn(s3.dE), info: { type: 'amber', text: 'Rullas vidare utan tidsgräns. Kan kvittas mot tjänst (70%) de första 5 åren.' }, fields: [{ id: 'r21', label: 'Outnyttjat underskott från föregående år', hint: '' }, { id: 'r22', label: 'Utnyttjat underskott i år', hint: 'Auto — max årets överskott', calc: true }, { id: 'r23', label: 'Kvarstående (rullas vidare)', hint: 'Auto', calc: true }] },
-              { code: 'NE §F', name: 'Pension, sjuklön & sjukpenning', sum: sgn(s3.dF), info: { type: 'blue', text: `Tjänstepension max 35% av överskott = ${fmt(Math.floor(bokf*0.35))} kr (tak 573 000 kr) · IL 28:5. OBS: SLP 24,26% × R24 läggs automatiskt till som kostnad nedan.` }, fields: [{ id: 'r24', label: 'Avdrag för pensionssparande / tjänstepension', hint: `Max 35% × ${fmt(bokf)} kr = ${fmt(Math.floor(bokf * 0.35))} kr · IL 28:5` }, { id: 'r25', label: 'Sjukpenning / föräldrapenning (intäkt)', hint: '' }, { id: 'r26', label: 'Betald sjuklön till anställda', hint: '', sie: true }, { id: 'r27', label: 'Erhållen sjuklöneersättning från FK (intäkt)', hint: '' }] },
-              { code: 'NE §G', name: '⚠ Egenavgifter föregående år — medgivna / påförda', sum: sgn(s3.dG), info: { type: 'amber', text: '⚠ Viktig rad som de flesta missar! Medgivna (R28) = vad du drog av på förra årets NE. Påförda (R29) = faktiska avgifter från slutskattebeskedet. Differensen justeras här.' }, fields: [{ id: 'r28', label: 'Avdrag medgivna egenavgifter föregående år', hint: 'Beloppet du drog av på förra NE · Från förra årets NE §4 E5', highlight: true }, { id: 'r29', label: 'Faktiskt påförda egenavgifter föregående år', hint: 'Från Skatteverkets slutskattebesked · Se R41 på NE-bilagan', highlight: true }, { id: 'r30', label: 'Justering (R28 − R29)', hint: 'Pos = drog av för mycket → återförs (ökar överskott) · Neg = extra avdrag · Auto', calc: true }] },
-              { code: 'NE §H', name: 'Övriga justeringar', sum: sgn(s3.dH), info: null, fields: [{ id: 'r31', label: 'Representation — ej avdragsgill del (6072)', hint: 'Auto från SIE · Max 180 kr exkl. moms / person', sie: (mapping?.autoR31||0) > 0 },
+              { code: 'NE §E', name: 'Outnyttjat underskott', sum: sgn(s3.dE), avKey: 'underskott', avQ: 'Hade du outnyttjat underskott från förra året (rad R23 i förra årets NE)?', avNej: () => setJv('r21', 0), info: { type: 'amber', text: 'Rullas vidare utan tidsgräns. Kan kvittas mot tjänst (70%) de första 5 åren.' }, fields: [{ id: 'r21', label: 'Outnyttjat underskott från föregående år', hint: '' }, { id: 'r22', label: 'Utnyttjat underskott i år', hint: 'Auto — max årets överskott', calc: true }, { id: 'r23', label: 'Kvarstående (rullas vidare)', hint: 'Auto', calc: true }] },
+              { code: 'NE §F', name: 'Pension, sjuklön & sjukpenning', sum: sgn(s3.dF), avKey: 'pension', avQ: 'Har du pensionssparande, betalat sjuklön till anställda, eller fått sjukpenning?', avNej: () => { setJv('r24',0); setJv('r25',0); setJv('r26',0); setJv('r27',0) }, info: { type: 'blue', text: `Tjänstepension max 35% av överskott = ${fmt(Math.floor(bokf*0.35))} kr (tak 573 000 kr) · IL 28:5. OBS: SLP 24,26% × R24 läggs automatiskt till som kostnad nedan.` }, fields: [{ id: 'r24', label: 'Avdrag för pensionssparande / tjänstepension', hint: `Max 35% × ${fmt(bokf)} kr = ${fmt(Math.floor(bokf * 0.35))} kr · IL 28:5` }, { id: 'r25', label: 'Sjukpenning / föräldrapenning (intäkt)', hint: '' }, { id: 'r26', label: 'Betald sjuklön till anställda', hint: '', sie: true }, { id: 'r27', label: 'Erhållen sjuklöneersättning från FK (intäkt)', hint: '' }] },
+              { code: 'NE §G', name: 'Egenavgifter föregående år (§G)', sum: sgn(s3.dG), avKey: 'ega_fg', avQ: 'Deklarerade du enskild firma förra året? Medgivna och påförda EGA måste stämmas av.', avNej: () => { setJv('r28',0); setJv('r29',0) }, info: { type: 'amber', text: '⚠ Viktig rad som de flesta missar! Medgivna (R28) = vad du drog av på förra årets NE. Påförda (R29) = faktiska avgifter från slutskattebeskedet. Differensen justeras här.' }, fields: [{ id: 'r28', label: 'Avdrag medgivna egenavgifter föregående år', hint: 'Beloppet du drog av på förra NE · Från förra årets NE §4 E5', highlight: true }, { id: 'r29', label: 'Faktiskt påförda egenavgifter föregående år', hint: 'Från Skatteverkets slutskattebesked · Se R41 på NE-bilagan', highlight: true }, { id: 'r30', label: 'Justering (R28 − R29)', hint: 'Pos = drog av för mycket → återförs (ökar överskott) · Neg = extra avdrag · Auto', calc: true }] },
+              { code: 'NE §H', name: 'Övriga justeringar', sum: sgn(s3.dH), avKey: 'ej_skattepliktig', avQ: 'Har du bokfört intäkter som inte ska beskattas (t.ex. skattefria bidrag, försäkringsersättningar)?', avNej: () => setJv('r14h', 0), info: null, fields: [{ id: 'r31', label: 'Representation — ej avdragsgill del (6072)', hint: 'Auto från SIE · Max 180 kr exkl. moms / person', sie: (mapping?.autoR31||0) > 0 },
               { id: 'r14h', label: 'Bokförda intäkter som inte ska tas upp till beskattning (R14)', hint: 'T.ex. skattefria bidrag, försäkringsersättningar' }, { id: 'r32', label: 'Böter och skattetillägg (IL 9:10)', hint: 'Auto från SIE · Aldrig avdragsgilla', sie: (mapping?.autoR32||0) > 0 }, { id: 'r33', label: 'Schablonintäkt (ISK / räntefond i rörelsen)', hint: '' }, { id: 'r34', label: 'Övriga skattemässiga tillägg', hint: '' }, { id: 'r35', label: 'Övriga skattemässiga avdrag', hint: '' }] },
             ].map(acc => (
               <Accordion key={acc.code} code={acc.code} name={acc.name} sum={acc.sum}>
+                {(acc as {avKey?: string; avQ?: string; avNej?: () => void}).avKey && (() => {
+                  const ak = (acc as {avKey: string; avQ: string; avNej?: () => void})
+                  const av = avstamning[ak.avKey]
+                  return (
+                    <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDD8CF', background: av === null ? '#FFFAFA' : av === 'ja' ? '#F5FBF7' : '#FAFAFA', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ flex: 1, fontSize: 13, color: '#3A3832' }}>{ak.avQ}</div>
+                      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <button onClick={() => setAv(ak.avKey, 'ja')}
+                          style={{ padding: '4px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', borderRadius: 2, border: '1px solid', background: av === 'ja' ? '#2D6A4F' : '#fff', color: av === 'ja' ? '#fff' : '#3A3832', borderColor: av === 'ja' ? '#2D6A4F' : '#C8C3BA', fontWeight: av === 'ja' ? 600 : 400 }}>Ja</button>
+                        <button onClick={() => { setAv(ak.avKey, 'nej'); ak.avNej?.() }}
+                          style={{ padding: '4px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', borderRadius: 2, border: '1px solid', background: av === 'nej' ? '#6A6660' : '#fff', color: av === 'nej' ? '#fff' : '#3A3832', borderColor: av === 'nej' ? '#6A6660' : '#C8C3BA', fontWeight: av === 'nej' ? 600 : 400 }}>Nej</button>
+                      </div>
+                      {av === null && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', letterSpacing: '.06em', flexShrink: 0 }}>SVAR KRÄVS</span>}
+                    </div>
+                  )
+                })()}
                 {acc.info && (
                   <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, lineHeight: 1.65, borderRadius: 2, background: acc.info.type === 'blue' ? '#EBF3FA' : '#FDF5E6', borderLeft: `2px solid ${acc.info.type === 'blue' ? '#5A96C8' : '#92620A'}`, color: acc.info.type === 'blue' ? '#2A5070' : '#92620A' }}>{acc.info.text}</div>
                 )}
@@ -1653,6 +1585,17 @@ export default function DeklaraPage() {
 
                         {/* ── RESOR & TRAKTAMENTE ── */}
             <Accordion code="NE R22" name="Resor & traktamente — ej bokförda kostnader (R22)" sum={sgn(s3.dI||0)}>
+              {(() => {
+                const av = avstamning['traktamente']
+                return <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDD8CF', background: av === null ? '#FFFAFA' : av === 'ja' ? '#F5FBF7' : '#FAFAFA', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, fontSize: 13, color: '#3A3832' }}>Har du kört privat bil i tjänsten eller haft tjänsteresor med traktamente som inte bokförts?</div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => setAv('traktamente', 'ja')} style={{ padding: '4px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', borderRadius: 2, border: '1px solid', background: av === 'ja' ? '#2D6A4F' : '#fff', color: av === 'ja' ? '#fff' : '#3A3832', borderColor: av === 'ja' ? '#2D6A4F' : '#C8C3BA', fontWeight: av === 'ja' ? 600 : 400 }}>Ja</button>
+                    <button onClick={() => { setAv('traktamente', 'nej'); setJv('resor_mil',0); setJv('resor_trakt',0); setJv('resor_trakt_manuell',0) }} style={{ padding: '4px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', borderRadius: 2, border: '1px solid', background: av === 'nej' ? '#6A6660' : '#fff', color: av === 'nej' ? '#fff' : '#3A3832', borderColor: av === 'nej' ? '#6A6660' : '#C8C3BA', fontWeight: av === 'nej' ? 600 : 400 }}>Nej</button>
+                  </div>
+                  {av === null && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', letterSpacing: '.06em', flexShrink: 0 }}>SVAR KRÄVS</span>}
+                </div>
+              })()}
               <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
                 Milersättning för tjänsteresor med privat bil: <strong>25 kr/mil</strong> (2025). Traktamente inrikes helpension: <strong>290 kr/dag</strong>. Dessa läggs som avdrag om de inte redan bokförts som kostnad.
               </div>
@@ -1750,6 +1693,17 @@ export default function DeklaraPage() {
 
             {/* ── HEMMAKONTOR ── */}
             <Accordion code="NE R16" name="Hemmakontor & arbetsrum — ej bokförda kostnader (R16)" sum={sgn(s3.dJ||0)}>
+              {(() => {
+                const av = avstamning['hemmakontor']
+                return <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDD8CF', background: av === null ? '#FFFAFA' : av === 'ja' ? '#F5FBF7' : '#FAFAFA', display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, fontSize: 13, color: '#3A3832' }}>Har du ett arbetsrum hemma som används uteslutande för jobbet?</div>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <button onClick={() => setAv('hemmakontor', 'ja')} style={{ padding: '4px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', borderRadius: 2, border: '1px solid', background: av === 'ja' ? '#2D6A4F' : '#fff', color: av === 'ja' ? '#fff' : '#3A3832', borderColor: av === 'ja' ? '#2D6A4F' : '#C8C3BA', fontWeight: av === 'ja' ? 600 : 400 }}>Ja</button>
+                    <button onClick={() => { setAv('hemmakontor', 'nej'); setJv('hemmakontor', 0) }} style={{ padding: '4px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', borderRadius: 2, border: '1px solid', background: av === 'nej' ? '#6A6660' : '#fff', color: av === 'nej' ? '#fff' : '#3A3832', borderColor: av === 'nej' ? '#6A6660' : '#C8C3BA', fontWeight: av === 'nej' ? 600 : 400 }}>Nej</button>
+                  </div>
+                  {av === null && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', letterSpacing: '.06em', flexShrink: 0 }}>SVAR KRÄVS</span>}
+                </div>
+              })()}
               <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
                 Kostnader för arbetsrum som inte bokförts: <strong>hyresrätt 4 000 kr/år</strong>, <strong>bostadsrätt 2 000 kr/år</strong> schablonbelopp. Gäller om rummet används uteslutande för arbete. Mappas mot NE R16.
               </div>
