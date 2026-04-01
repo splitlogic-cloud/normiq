@@ -1518,7 +1518,7 @@ export default function DeklaraPage() {
                   setJv('useRF', e.target.checked ? 1 : 0)
                   if (e.target.checked) {
                     // Auto-fill R19 med maxbeloppet — användaren kan minska det
-                    const maxRF = Math.round((j.r17||0)*0.0796 + (j.r25_rf||0))
+                    const maxRF = Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0)
                     setJv('r19', maxRF)
                   } else {
                     setJv('r19', 0)
@@ -1532,17 +1532,36 @@ export default function DeklaraPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R17</span>
                   <div><div style={{ fontSize: 13, color: '#3A3832' }}>Kapitalunderlag (ingående justerat EK)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto från balansräkning</div></div>
-                  <input type="number" value={j.r17 || 0} onChange={e => setJv('r17', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#EFF7F2', border: '1px solid #B7D9C8', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <input type="number" value={j.r17 || 0} onChange={e => {
+                    const v = parseInt(e.target.value)||0
+                    setJv('r17', v)
+                    if (j.useRF) {
+                      const oldMax = Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0)
+                      if ((j.r19||0) >= oldMax - 1) {
+                        setJv('r19', Math.floor((v + (j.r25_rf||0))*0.0796) + (j.r25_rf||0))
+                      }
+                    }
+                  }} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#EFF7F2', border: '1px solid #B7D9C8', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R25</span>
                   <div><div style={{ fontSize: 13, color: '#3A3832' }}>Sparat fördelningsbelopp från föregående år</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Outnyttjat belopp från fg år NE § Räntefördelning</div></div>
-                  <input type="number" value={j.r25_rf || 0} onChange={e => setJv('r25_rf', parseInt(e.target.value)||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <input type="number" value={j.r25_rf || 0} onChange={e => {
+                    const v = parseInt(e.target.value)||0
+                    setJv('r25_rf', v)
+                    // Om RF är aktiverad: uppdatera R19 om det fortfarande är på gamla max
+                    if (j.useRF) {
+                      const oldMax = Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0)
+                      if ((j.r19||0) >= oldMax - 1) {
+                        setJv('r19', Math.floor(((j.r17||0) + v)*0.0796) + v)
+                      }
+                    }
+                  }} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R18</span>
-                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Max positiv räntefördelning (7,96% × R17 + R25)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto — kapitalunderlag + sparat fg år</div></div>
-                  <input readOnly value={Math.round((j.r17||0)*0.0796 + (j.r25_rf||0))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Max positivt fördelningsbelopp (7,96% × (R17 + R25) + R25)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto — kapitalunderlag + sparat fg år</div></div>
+                  <input readOnly value={Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0)} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '6px 10px', background: '#EDE8DF', border: '1px solid #DDD8CF', color: '#9A9690', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R19</span>
@@ -1552,20 +1571,20 @@ export default function DeklaraPage() {
                       <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', background: '#FDF0EE', border: '1px solid #E8C4BF', padding: '1px 6px', marginLeft: 8 }}>OBLIGATORISK</span>
                     </div>
                     <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>
-                      Max {fmt(Math.round((j.r17||0)*0.0796 + (j.r25_rf||0)))} kr · Beskattas som kapitalinkomst 30% · Kan sparas till nästa år
+                      Max {fmt(Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0))} kr · Beskattas som kapitalinkomst 30% · Kan sparas till nästa år
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <input type="number" value={j.r19 || 0}
-                      onChange={e => setJv('r19', Math.min(parseInt(e.target.value)||0, Math.round((j.r17||0)*0.0796 + (j.r25_rf||0))))}
+                      onChange={e => setJv('r19', Math.min(parseInt(e.target.value)||0, Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0)))}
                       style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, padding: '6px 10px',
                         background: (j.r19||0) === 0 ? '#FDF0EE' : '#EFF7F2',
                         border: `2px solid ${(j.r19||0) === 0 ? '#C0392B' : '#2D6A4F'}`,
                         color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
-                    {(j.r19||0) === 0 && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', letterSpacing: '.06em' }}>⚠ OBLIGATORISK — ange belopp (max {fmt(Math.round((j.r17||0)*0.0796 + (j.r25_rf||0)))} kr)</div>}
-                    {(j.r19||0) > 0 && (j.r19||0) < Math.round((j.r17||0)*0.0796 + (j.r25_rf||0)) && (
+                    {(j.r19||0) === 0 && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', letterSpacing: '.06em' }}>⚠ OBLIGATORISK — ange belopp (max {fmt(Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0))} kr)</div>}
+                    {(j.r19||0) > 0 && (j.r19||0) < Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0) && (
                       <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#92620A' }}>
-                        Sparat: {fmt(Math.round((j.r17||0)*0.0796 + (j.r25_rf||0)) - (j.r19||0))} kr rullas vidare
+                        Sparat: {fmt(Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0) - (j.r19||0))} kr rullas vidare
                       </div>
                     )}
                   </div>
