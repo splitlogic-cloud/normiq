@@ -1,0 +1,589 @@
+'use client'
+
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { createBrowserClient } from '@supabase/ssr'
+
+// ─── Reused pure functions (same as page.tsx) ────────────────
+interface SIEData {
+  companyName: string; orgNumber: string
+  fiscalYearStart: string; fiscalYearEnd: string
+  accounts: Record<string, { number: string; name: string }>
+  accountTotals: Record<string, number>
+  openingBalances: Record<string, number>
+}
+interface MappingData {
+  fields: Record<string, { id: string; label: string; hint: string; value: number; accs: string[]; confidence: 'high' | 'medium' }>
+  int: number; kst: number; bokf: number
+  flags: { sev: string; msg: string; detail: string }[]
+  avskr: number; kapital: number; autoR31: number; autoR32: number
+}
+
+function parseSIE(txt: string): SIEData {
+  const lines = txt.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const s: SIEData = { companyName: '', orgNumber: '', fiscalYearStart: '', fiscalYearEnd: '', accounts: {}, accountTotals: {}, openingBalances: {} }
+  const closingBalances: { acc: string; amt: number }[] = []
+  const vouchers: { tx: { acc: string; amt: number }[] }[] = []
+  let cv: { tx: { acc: string; amt: number }[] } | null = null
+  const unq = (s: string) => s.replace(/^"(.*)"$/, '$1')
+  const pf = (s: string) => parseFloat(s.replace(',', '.')) || 0
+  const parseLine = (line: string) => {
+    const tok: string[] = []; let i = 0
+    while (i < line.length && line[i] !== ' ' && line[i] !== '\t') i++
+    const lbl = line.substring(0, i).toUpperCase()
+    while (i < line.length) {
+      while (i < line.length && (line[i] === ' ' || line[i] === '\t')) i++
+      if (i >= line.length) break
+      if (line[i] === '"') {
+        let j = i + 1; while (j < line.length && line[j] !== '"') j++
+        tok.push(line.substring(i, j + 1)); i = j + 1
+      } else if (line[i] === '{') {
+        let j = i + 1; while (j < line.length && line[j] !== '}') j++
+        tok.push(line.substring(i, j + 1)); i = j + 1
+      } else {
+        let j = i; while (j < line.length && line[j] !== ' ' && line[j] !== '\t') j++
+        tok.push(line.substring(i, j)); i = j
+      }
+    }
+    return { lbl, tok }
+  }
+  for (const raw of lines) {
+    const line = raw.trim()
+    if (!line || line.startsWith('//')) continue
+    const { lbl, tok } = parseLine(line)
+    switch (lbl) {
+      case '#FNAMN': s.companyName = unq(tok[0] || ''); break
+      case '#ORGNR': s.orgNumber = tok[0] || ''; break
+      case '#RAR': if (parseInt(tok[0] || '0') === 0) { s.fiscalYearStart = tok[1] || ''; s.fiscalYearEnd = tok[2] || '' }; break
+      case '#KONTO': if (tok[0]) s.accounts[tok[0]] = { number: tok[0], name: unq(tok[1] || '') }; break
+      case '#IB': if (parseInt(tok[0] || '0') === 0 && tok[1]) s.openingBalances[tok[1]] = (s.openingBalances[tok[1]] || 0) + pf(tok[2] || '0'); break
+      case '#UB': case '#RES': if (parseInt(tok[0] || '0') === 0 && tok[1]) closingBalances.push({ acc: tok[1], amt: pf(tok[2] || '0') }); break
+      case '#VER': if (cv) vouchers.push(cv); cv = { tx: [] }; break
+      case '#TRANS': if (cv && tok[0]) { let i = 1; if (tok[i] === '{') { while (i < tok.length && tok[i] !== '}') i++; i++ }; cv.tx.push({ acc: tok[0], amt: pf(tok[i] || '0') }) }; break
+    }
+  }
+  if (cv) vouchers.push(cv)
+  for (const b of closingBalances) s.accountTotals[b.acc] = (s.accountTotals[b.acc] || 0) + b.amt
+  if (!Object.keys(s.accountTotals).length) for (const v of vouchers) for (const t of v.tx) s.accountTotals[t.acc] = (s.accountTotals[t.acc] || 0) + t.amt
+  return s
+}
+
+function calcStep3(base: number, vals: Record<string, number>) {
+  const g = (k: string) => vals[k] || 0
+  const dA = (g('r6') - g('r5')) - g('r8') + g('r9')
+  const dB = g('r11') + g('r12') + g('r13') - g('r10')
+  const dC = g('r15') - g('r14')
+  const dD = g('useRF') ? g('r20') - g('r19') : 0
+  const dE = -Math.min(g('r21'), Math.max(0, base))
+  const dF = g('r25') + g('r27') - g('r24') - g('r26')
+  const dSLP = g('r24') > 0 ? -Math.round(g('r24') * 0.2426) : 0
+  const dG = g('r28') - g('r29')
+  const dH = g('r31') + g('r32') + g('r33') + g('r34') - g('r35') - g('r14h')
+  const resorAvdrag = g('resor_mil') * 25 + (g('resor_trakt_manuell') || g('resor_trakt') * 290) + g('utland_totalt')
+  const hkAvdrag = g('hemmakontor') + g('hemmakontor_internet')
+  const dI = -resorAvdrag; const dJ = -hkAvdrag
+  return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, dSLP, tot: Math.max(0, base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ + dSLP) }
+}
+
+function calcEga(base: number, passiv: boolean, kommunalskattPct = 32.0) {
+  if (base <= 0) return { sum: 0, ned: 0, netto: 0, avd25: 0, slutlig: base, kom: 0, beg: 0, statlig: 0, tot: 0 }
+  if (passiv) {
+    const sls = Math.round(base * 0.2426); const avd25 = Math.round(base * 0.25); const slutlig = base - avd25
+    const kom = Math.round(slutlig * (kommunalskattPct / 100)); const beg = Math.round(slutlig * 0.00279)
+    const statlig = slutlig > 598500 ? Math.round((slutlig - 598500) * 0.20) : 0
+    return { sum: sls, ned: 0, netto: sls, avd25, slutlig, kom, beg, statlig, tot: kom + beg + sls + statlig }
+  }
+  const sum = Math.round(base * (0.1021 + 0.0364 + 0.026 + 0.006 + 0.002 + 0.1162))
+  const ned = Math.min(Math.round(base * 0.075), 15000)
+  const netto = Math.max(0, sum - ned)
+  const avd25 = Math.round(base * 0.25); const slutlig = base - avd25
+  const kom = Math.round(slutlig * (kommunalskattPct / 100)); const beg = Math.round(slutlig * 0.00279)
+  const statlig = slutlig > 598500 ? Math.round((slutlig - 598500) * 0.20) : 0
+  return { sum, ned, netto, avd25, slutlig, kom, beg, statlig, tot: kom + beg + netto + statlig }
+}
+
+const fmt = (n: number) => Math.round(n).toLocaleString('sv-SE')
+
+// ─── Component ───────────────────────────────
+export default function DeklareraNE() {
+  const supabase = React.useMemo(() => createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  ), [])
+
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => { setUser(data.user); setAuthLoading(false) })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setUser(s?.user ?? null))
+    return () => subscription.unsubscribe()
+  }, [supabase])
+
+  // ─── State ───────────────────────────────────
+  const [sieData, setSieData] = useState<SIEData | null>(null)
+  const [mapping, setMapping] = useState<MappingData | null>(null)
+  const [filename, setFilename] = useState('')
+  const [dragging, setDragging] = useState(false)
+  const [parsing, setParsing] = useState(false)
+  const [j, setJ] = useState<Record<string, number>>({})
+  const [passiv, setPassiv] = useState(false)
+  const [kommunalskatt, setKommunalskatt] = useState(32.0)
+  const [verksamhetensArt, setVerksamhetensArt] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const setJv = (k: string, v: number) => setJ(prev => ({ ...prev, [k]: v }))
+
+  // ─── Live calculations ────────────────────────
+  const bokf = mapping?.bokf || 0
+  const s3 = calcStep3(bokf, j)
+  const skattemassigt = s3.tot
+  const ega = calcEga(skattemassigt, passiv, kommunalskatt)
+
+  // ─── File handling ────────────────────────────
+  const handleFile = useCallback(async (file: File) => {
+    setFilename(file.name); setParsing(true)
+    const buf = await file.arrayBuffer()
+    let txt = ''
+    try { txt = new TextDecoder('windows-1252').decode(buf) } catch { txt = new TextDecoder().decode(buf) }
+    const sie = parseSIE(txt)
+    setSieData(sie)
+    // Map SIE to NE fields (simplified inline version)
+    const t = sie.accountTotals
+    const range = (from: string, to: string) => Object.entries(t).filter(([a]) => a >= from && a <= to).reduce((s, [, v]) => s + v, 0)
+    const bokfOvsk = -(range('8990', '8999') || (range('3000', '3999') + range('4000', '7999') + range('8000', '8899')))
+    const ibEK = Object.entries(sie.openingBalances).filter(([a]) => a >= '2000' && a <= '2099').reduce((s, [, v]) => s + v, 0)
+    setMapping({
+      fields: {
+        R1: { id: 'R1', label: 'Försäljning/intäkter', hint: '', value: Math.abs(range('3000', '3999')), accs: [], confidence: 'high' },
+        R10: { id: 'R10', label: 'Varor, material', hint: '', value: Math.abs(range('4000', '4999')), accs: [], confidence: 'high' },
+        R15: { id: 'R15', label: 'Övriga externa kostnader', hint: '', value: Math.abs(range('5000', '6999')), accs: [], confidence: 'high' },
+        R17: { id: 'R17', label: 'Avskrivningar', hint: '', value: Math.abs(range('7810', '7839')), accs: [], confidence: 'high' },
+      },
+      int: Math.abs(range('3000', '3999')),
+      kst: Math.abs(range('4000', '7999')),
+      bokf: bokfOvsk,
+      flags: [],
+      avskr: Math.abs(range('7810', '7839')),
+      kapital: Math.round(-ibEK),
+      autoR31: Math.abs(t['6072'] || 0),
+      autoR32: Math.abs(t['6993'] || 0),
+    })
+    setJ(prev => ({
+      ...prev,
+      r31: Math.round(Math.abs(t['6072'] || 0)),
+      r32: Math.round(Math.abs(t['6993'] || 0)),
+      r17: Math.round(-ibEK),
+    }))
+    setParsing(false)
+  }, [])
+
+  // ─── Sections ref for scroll ─────────────────
+  const sectionRefs = {
+    upload: useRef<HTMLDivElement>(null),
+    intakter: useRef<HTMLDivElement>(null),
+    avdrag: useRef<HTMLDivElement>(null),
+    egenavgifter: useRef<HTMLDivElement>(null),
+    resultat: useRef<HTMLDivElement>(null),
+  }
+
+  const scrollTo = (key: keyof typeof sectionRefs) => {
+    sectionRefs[key].current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  if (authLoading) return <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0A0A0A', color: '#fff', fontFamily: 'Georgia, serif', fontSize: 18 }}>Laddar...</div>
+
+  if (!user) return (
+    <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#0A0A0A' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: '"Cormorant Garamond", Georgia, serif', fontSize: 42, fontWeight: 300, color: '#fff', letterSpacing: '.02em', marginBottom: 8 }}>
+          Normiq <span style={{ color: '#E8C547' }}>Deklarera</span>
+        </div>
+        <div style={{ color: '#666', marginBottom: 28, fontSize: 14, fontFamily: 'monospace' }}>NE · Taxeringsår 2026</div>
+        <a href="/login?redirect=/deklarera/v2" style={{ display: 'inline-block', padding: '12px 28px', background: '#E8C547', color: '#0A0A0A', fontSize: 13, fontWeight: 700, textDecoration: 'none', letterSpacing: '.06em', fontFamily: 'monospace' }}>
+          LOGGA IN →
+        </a>
+      </div>
+    </div>
+  )
+
+  // ─── Styles ───────────────────────────────────
+  const C = {
+    bg: '#0A0A0A', surface: '#111', border: '#222', accent: '#E8C547',
+    text: '#E8E4DC', muted: '#666', green: '#4CAF7A', red: '#E85447',
+    font: '"Cormorant Garamond", Georgia, serif', mono: '"IBM Plex Mono", "Courier New", monospace',
+  }
+
+  const num = (v: number, red = false) => ({
+    fontFamily: C.mono, fontSize: 13, fontWeight: 600,
+    color: red ? (v < 0 ? C.red : C.green) : C.text,
+  })
+
+  const Label = ({ children }: { children: React.ReactNode }) => (
+    <div style={{ fontFamily: C.mono, fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase' as const, color: C.muted, marginBottom: 6 }}>{children}</div>
+  )
+
+  const Row = ({ label, code, value, editable, onChange, hint, auto }: {
+    label: string; code?: string; value: number
+    editable?: boolean; onChange?: (v: number) => void; hint?: string; auto?: boolean
+  }) => (
+    <div style={{ display: 'grid', gridTemplateColumns: '32px 1fr 130px', gap: 12, alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ fontFamily: C.mono, fontSize: 10, color: C.accent, opacity: .7 }}>{code}</div>
+      <div>
+        <div style={{ fontSize: 13, color: C.text }}>{label}</div>
+        {hint && <div style={{ fontFamily: C.mono, fontSize: 10, color: C.muted, marginTop: 2 }}>{hint}</div>}
+      </div>
+      {editable && onChange ? (
+        <input
+          type="number"
+          value={value}
+          onChange={e => onChange(parseInt(e.target.value) || 0)}
+          style={{ fontFamily: C.mono, fontSize: 13, fontWeight: 600, padding: '6px 10px', background: '#191919', border: `1px solid ${C.border}`, color: C.text, textAlign: 'right', outline: 'none', width: '100%' }}
+        />
+      ) : (
+        <div style={{ fontFamily: C.mono, fontSize: 13, fontWeight: 600, color: auto ? C.muted : C.text, textAlign: 'right', padding: '6px 10px', background: auto ? 'transparent' : '#191919', border: `1px solid ${auto ? 'transparent' : C.border}` }}>
+          {fmt(value)}
+        </div>
+      )}
+    </div>
+  )
+
+  const Divider = ({ label }: { label: string }) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '28px 0 16px', opacity: .5 }}>
+      <div style={{ flex: 1, height: 1, background: C.border }} />
+      <div style={{ fontFamily: C.mono, fontSize: 9, letterSpacing: '.2em', color: C.muted }}>{label}</div>
+      <div style={{ flex: 1, height: 1, background: C.border }} />
+    </div>
+  )
+
+  return (
+    <div style={{ background: C.bg, minHeight: '100vh', color: C.text, fontFamily: C.font }}>
+
+      {/* ── STICKY HEADER ── */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, background: 'rgba(10,10,10,.95)', backdropFilter: 'blur(12px)', borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 40px', height: 52 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+          <span style={{ fontFamily: C.font, fontSize: 18, fontWeight: 300, letterSpacing: '.04em' }}>Normiq</span>
+          <span style={{ color: C.accent, fontSize: 18 }}>Deklarera</span>
+          <span style={{ fontFamily: C.mono, fontSize: 9, color: C.muted, letterSpacing: '.1em', marginLeft: 8 }}>NE · 2026</span>
+        </div>
+        {sieData && (
+          <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+            {(['intakter', 'avdrag', 'egenavgifter', 'resultat'] as const).map(s => (
+              <button key={s} onClick={() => scrollTo(s)} style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontFamily: C.mono, fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', padding: '4px 0' }}>
+                {s === 'intakter' ? 'Intäkter' : s === 'avdrag' ? 'Avdrag' : s === 'egenavgifter' ? 'Skatt' : 'Resultat'}
+              </button>
+            ))}
+            <div style={{ width: 1, height: 16, background: C.border }} />
+            <div style={{ fontFamily: C.mono, fontSize: 10, color: C.muted }}>{user?.email}</div>
+          </div>
+        )}
+
+        {/* Live result in header */}
+        {sieData && (
+          <div style={{ display: 'flex', gap: 20, alignItems: 'baseline' }}>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: C.mono, fontSize: 8, color: C.muted, letterSpacing: '.1em' }}>SLUTLIG SKATT</div>
+              <div style={{ fontFamily: C.mono, fontSize: 16, fontWeight: 700, color: C.accent }}>{fmt(ega.tot)} kr</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ fontFamily: C.mono, fontSize: 8, color: C.muted, letterSpacing: '.1em' }}>ÖVERSKOTT</div>
+              <div style={{ fontFamily: C.mono, fontSize: 16, fontWeight: 700, color: skattemassigt >= 0 ? C.green : C.red }}>
+                {skattemassigt >= 0 ? '' : '−'}{fmt(Math.abs(skattemassigt))} kr
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{ maxWidth: 860, margin: '0 auto', padding: '0 40px 120px' }}>
+
+        {/* ── UPLOAD ── */}
+        <div ref={sectionRefs.upload} style={{ paddingTop: 64 }}>
+          {!sieData ? (
+            <>
+              <div style={{ marginBottom: 48 }}>
+                <div style={{ fontFamily: C.mono, fontSize: 11, color: C.accent, letterSpacing: '.16em', marginBottom: 16 }}>NORMIQ DEKLARERA · BLANKETT NE</div>
+                <h1 style={{ fontFamily: C.font, fontSize: 56, fontWeight: 300, lineHeight: 1.05, marginBottom: 16, letterSpacing: '-.01em' }}>
+                  Din NE-deklaration,<br />
+                  <em style={{ color: C.accent }}>live.</em>
+                </h1>
+                <p style={{ fontSize: 16, color: C.muted, lineHeight: 1.7, maxWidth: 480 }}>
+                  Ladda upp SIE-filen från Fortnox, Bokio eller Visma. Alla beräkningar sker i realtid medan du justerar.
+                </p>
+              </div>
+
+              {/* Drop zone */}
+              <div
+                onDragOver={e => { e.preventDefault(); setDragging(true) }}
+                onDragLeave={() => setDragging(false)}
+                onDrop={e => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f) }}
+                onClick={() => fileRef.current?.click()}
+                style={{
+                  border: `1px solid ${dragging ? C.accent : C.border}`,
+                  background: dragging ? 'rgba(232,197,71,.04)' : '#111',
+                  padding: '60px 40px', textAlign: 'center', cursor: 'pointer',
+                  transition: 'all .2s', marginBottom: 16,
+                }}
+              >
+                <input ref={fileRef} type="file" accept=".se,.sie,.si" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+                <div style={{ fontFamily: C.mono, fontSize: 28, marginBottom: 12, opacity: .3 }}>⬆</div>
+                <div style={{ fontFamily: C.font, fontSize: 22, fontWeight: 300, marginBottom: 8 }}>Dra hit din SIE-fil</div>
+                <div style={{ fontFamily: C.mono, fontSize: 10, color: C.muted, letterSpacing: '.1em' }}>SIE 4 · FORTNOX · BOKIO · VISMA · BJÖRN LUNDÉN</div>
+              </div>
+
+              <button
+                onClick={() => {
+                  const sie = parseSIE(`#FLAGGA 0\n#SIETYP 4\n#FNAMN "Demo Konsult AB"\n#ORGNR 198801011234\n#RAR 0 20250101 20251231\n#UB 0 3010 -485000\n#UB 0 5010 -36000\n#UB 0 6210 -8400\n#UB 0 6910 -24000\n#UB 0 7810 -12000\n#UB 0 1900 -156000\n#UB 0 2010 45000\n#IB 0 2010 -45000`)
+                  setSieData(sie)
+                  const bokfOvsk = 485000 - 36000 - 8400 - 24000 - 12000
+                  setMapping({ fields: { R1: { id: 'R1', label: 'Konsulttjänster', hint: '', value: 485000, accs: [], confidence: 'high' } }, int: 485000, kst: 80400, bokf: bokfOvsk, flags: [], avskr: 12000, kapital: 45000, autoR31: 0, autoR32: 0 })
+                  setVerksamhetensArt('Konsulttjänster')
+                  setFilename('demo_2025.se')
+                }}
+                style={{ background: 'none', border: `1px solid ${C.border}`, color: C.muted, padding: '12px 20px', cursor: 'pointer', fontFamily: C.mono, fontSize: 11, letterSpacing: '.08em', width: '100%' }}
+              >
+                KFÖR MED EXEMPELDATA — KONSULT 485 000 KR
+              </button>
+            </>
+          ) : (
+            /* Company header after upload */
+            <div style={{ paddingTop: 40, paddingBottom: 32, borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <div>
+                <div style={{ fontFamily: C.mono, fontSize: 10, color: C.muted, letterSpacing: '.1em', marginBottom: 6 }}>{filename}</div>
+                <div style={{ fontFamily: C.font, fontSize: 36, fontWeight: 300, letterSpacing: '.01em' }}>{sieData.companyName}</div>
+                <div style={{ fontFamily: C.mono, fontSize: 11, color: C.muted, marginTop: 4 }}>
+                  {sieData.orgNumber} · {sieData.fiscalYearStart?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')} – {sieData.fiscalYearEnd?.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}
+                </div>
+              </div>
+              <button onClick={() => { setSieData(null); setMapping(null); setJ({}) }} style={{ background: 'none', border: `1px solid ${C.border}`, color: C.muted, padding: '8px 16px', cursor: 'pointer', fontFamily: C.mono, fontSize: 10, letterSpacing: '.08em' }}>
+                BYTA FIL
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── MAIN FORM (only when SIE loaded) ── */}
+        {sieData && mapping && (<>
+
+          {/* ── INTÄKTER & KOSTNADER ── */}
+          <div ref={sectionRefs.intakter}>
+            <Divider label="Resultaträkning" />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, marginBottom: 28 }}>
+              <div>
+                <Label>Intäkter</Label>
+                <Row code="R1" label="Nettoomsättning" value={mapping.fields.R1?.value || 0} />
+                <Row code="R2" label="Momsfria intäkter" value={j.r2_mf || 0} editable onChange={v => setJv('r2_mf', v)} hint="T.ex. hyresintäkter" />
+                <Row code="R4" label="Ränteintäkter" value={j.r4_ranta || 0} editable onChange={v => setJv('r4_ranta', v)} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', marginTop: 4 }}>
+                  <span style={{ fontFamily: C.mono, fontSize: 11, color: C.muted, letterSpacing: '.06em' }}>SUMMA INTÄKTER</span>
+                  <span style={{ fontFamily: C.mono, fontSize: 15, fontWeight: 700, color: C.green }}>{fmt(mapping.int + (j.r2_mf||0) + (j.r4_ranta||0))} kr</span>
+                </div>
+              </div>
+              <div>
+                <Label>Kostnader</Label>
+                <Row code="R5" label="Varor, material, tjänster" value={mapping.fields.R10?.value || 0} />
+                <Row code="R6" label="Övriga externa kostnader" value={mapping.fields.R15?.value || 0} />
+                <Row code="R7" label="Löner och avgifter" value={j.r7_loner || 0} editable onChange={v => setJv('r7_loner', v)} />
+                <Row code="R10" label="Avskrivningar" value={mapping.avskr} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0', marginTop: 4 }}>
+                  <span style={{ fontFamily: C.mono, fontSize: 11, color: C.muted, letterSpacing: '.06em' }}>SUMMA KOSTNADER</span>
+                  <span style={{ fontFamily: C.mono, fontSize: 15, fontWeight: 700, color: C.red }}>−{fmt(mapping.kst)} kr</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Bokfört result */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', background: '#111', border: `1px solid ${C.border}` }}>
+              <div style={{ fontFamily: C.mono, fontSize: 11, color: C.muted, letterSpacing: '.1em' }}>BOKFÖRT ÖVERSKOTT / UNDERSKOTT</div>
+              <div style={{ fontFamily: C.mono, fontSize: 20, fontWeight: 700, color: bokf >= 0 ? C.text : C.red }}>
+                {bokf >= 0 ? '+' : '−'}{fmt(Math.abs(bokf))} kr
+              </div>
+            </div>
+          </div>
+
+          {/* ── SKATTEMÄSSIGA AVDRAG ── */}
+          <div ref={sectionRefs.avdrag}>
+            <Divider label="Skattemässiga justeringar" />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
+              <div>
+                <Label>Avdrag att lägga till</Label>
+                <Row code="R16" label="Hemmakontor (hyresrätt 4 000 / BR 2 000 kr)" value={j.hemmakontor || 0} editable onChange={v => setJv('hemmakontor', v)} />
+                <Row code="R22" label="Milersättning (25 kr/mil)" value={Math.round((j.resor_mil||0)*25)} hint={`${j.resor_mil||0} mil`} auto />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 8, padding: '10px 0', borderBottom: `1px solid ${C.border}`, alignItems: 'center' }}>
+                  <div style={{ fontSize: 13, color: C.text }}>Antal mil i tjänsten</div>
+                  <input type="number" value={j.resor_mil||0} onChange={e => setJv('resor_mil', parseInt(e.target.value)||0)}
+                    style={{ fontFamily: C.mono, fontSize: 13, padding: '6px 10px', background: '#191919', border: `1px solid ${C.border}`, color: C.text, textAlign: 'right', outline: 'none' }} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 8, padding: '10px 0', borderBottom: `1px solid ${C.border}`, alignItems: 'center' }}>
+                  <div style={{ fontSize: 13, color: C.text }}>Traktamentedagar inrikes (290 kr/dag)</div>
+                  <input type="number" value={j.resor_trakt||0} onChange={e => setJv('resor_trakt', parseInt(e.target.value)||0)}
+                    style={{ fontFamily: C.mono, fontSize: 13, padding: '6px 10px', background: '#191919', border: `1px solid ${C.border}`, color: C.text, textAlign: 'right', outline: 'none' }} />
+                </div>
+                <Row code="R38" label="Pensionssparande (max 35% av överskott)" value={j.r24||0} editable onChange={v => setJv('r24', Math.min(v, Math.round(bokf*0.35)))} hint={`Max ${fmt(Math.round(bokf*0.35))} kr`} />
+                <Row code="R34" label="Avsättning periodiseringsfond (max 30%)" value={j.r10||0} editable onChange={v => setJv('r10', Math.min(v, Math.round(bokf*0.30)))} hint={`Max ${fmt(Math.round(bokf*0.30))} kr`} />
+              </div>
+              <div>
+                <Label>Skattemässiga tillägg</Label>
+                {mapping.autoR31 > 0 && <Row code="R13" label="Representation ej avdragsgill" value={j.r31||mapping.autoR31} auto hint="Auto från SIE (6072)" />}
+                {mapping.autoR32 > 0 && <Row code="R13" label="Böter / skattetillägg" value={j.r32||mapping.autoR32} auto hint="Auto från SIE (6993)" />}
+                <Row code="R40" label="Medgivna EGA föregående år" value={j.r28||0} editable onChange={v => setJv('r28', v)} hint="Från förra årets NE §G" />
+                <Row code="R41" label="Påförda EGA föregående år" value={j.r29||0} editable onChange={v => setJv('r29', v)} hint="Från slutskattebesked" />
+                <Row code="R24" label="Outnyttjat underskott föregående år" value={j.r21||0} editable onChange={v => setJv('r21', v)} />
+                <Row code="R14" label="Bokförda intäkter ej skattepliktiga" value={j.r14h||0} editable onChange={v => setJv('r14h', v)} hint="T.ex. skattefria bidrag" />
+
+                {/* Live justering summary */}
+                <div style={{ marginTop: 16, padding: '12px 16px', background: 'rgba(232,197,71,.04)', border: `1px solid rgba(232,197,71,.15)` }}>
+                  <Label>Justerat resultat</Label>
+                  {[
+                    { l: 'Bokfört', v: bokf },
+                    { l: 'Hemmakontor', v: -(j.hemmakontor||0) },
+                    { l: 'Resor', v: -Math.round((j.resor_mil||0)*25 + (j.resor_trakt||0)*290) },
+                    { l: 'Pension', v: -(j.r24||0) },
+                    { l: 'SLP på pension', v: s3.dSLP },
+                    { l: 'Periodiseringsfond', v: -(j.r10||0) },
+                    { l: 'Ej avdragsgilla', v: s3.dH },
+                    { l: '§G EGA', v: s3.dG },
+                    { l: 'Underskott fg år', v: s3.dE },
+                  ].filter(row => row.v !== 0).map(row => (
+                    <div key={row.l} style={{ display: 'flex', justifyContent: 'space-between', fontFamily: C.mono, fontSize: 11, color: C.muted, marginBottom: 3 }}>
+                      <span>{row.l}</span>
+                      <span style={{ color: row.v > 0 ? C.green : row.v < 0 ? C.red : C.muted }}>
+                        {row.v > 0 ? '+' : ''}{fmt(row.v)} kr
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: `1px solid rgba(232,197,71,.2)`, marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between', fontFamily: C.mono, fontSize: 13, fontWeight: 700 }}>
+                    <span style={{ color: C.accent }}>SKATTEMÄSSIGT</span>
+                    <span style={{ color: skattemassigt >= 0 ? C.green : C.red }}>
+                      {skattemassigt >= 0 ? '+' : '−'}{fmt(Math.abs(skattemassigt))} kr
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── EGENAVGIFTER ── */}
+          <div ref={sectionRefs.egenavgifter}>
+            <Divider label="Egenavgifter & skatt" />
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40 }}>
+              <div>
+                <Label>Inställningar</Label>
+                <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                  {['Aktiv', 'Passiv'].map(v => (
+                    <button key={v} onClick={() => setPassiv(v === 'Passiv')}
+                      style={{ flex: 1, padding: '10px', background: (v === 'Passiv') === passiv ? C.accent : 'transparent', color: (v === 'Passiv') === passiv ? '#000' : C.muted, border: `1px solid ${(v === 'Passiv') === passiv ? C.accent : C.border}`, cursor: 'pointer', fontFamily: C.mono, fontSize: 11, letterSpacing: '.08em' }}>
+                      {v.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 8, alignItems: 'center', marginBottom: 24 }}>
+                  <div style={{ fontFamily: C.mono, fontSize: 11, color: C.muted, letterSpacing: '.06em' }}>KOMMUNALSKATT %</div>
+                  <input type="number" step="0.1" value={kommunalskatt} onChange={e => setKommunalskatt(parseFloat(e.target.value)||32)}
+                    style={{ fontFamily: C.mono, fontSize: 13, padding: '6px 10px', background: '#191919', border: `1px solid ${C.border}`, color: C.text, textAlign: 'right', outline: 'none' }} />
+                </div>
+
+                <Label>Beräkning</Label>
+                {[
+                  { l: 'Underlag', v: skattemassigt },
+                  { l: 'Egenavgifter (28,87%)', v: -ega.sum },
+                  { l: 'Nedsättning (7,5%)', v: ega.ned },
+                  { l: 'Netto-EGA', v: -ega.netto },
+                  { l: '25%-avdrag (R43)', v: ega.avd25 },
+                  { l: `Kommunalskatt (${kommunalskatt}%)`, v: -ega.kom },
+                  { l: 'Begravningsavgift', v: -ega.beg },
+                  ...(ega.statlig > 0 ? [{ l: 'Statlig inkomstskatt (20%)', v: -ega.statlig }] : []),
+                ].map(row => (
+                  <div key={row.l} style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: `1px solid ${C.border}`, fontFamily: C.mono, fontSize: 12 }}>
+                    <span style={{ color: C.muted }}>{row.l}</span>
+                    <span style={{ color: row.v > 0 ? C.green : C.red }}>{row.v > 0 ? '+' : ''}{fmt(row.v)} kr</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* ── RESULTAT ── */}
+              <div ref={sectionRefs.resultat}>
+                <Label>Slutresultat</Label>
+
+                <div style={{ padding: '28px 24px', background: '#111', border: `1px solid ${C.border}`, marginBottom: 16 }}>
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: C.muted, letterSpacing: '.14em', marginBottom: 12 }}>
+                    {ega.slutlig >= 0 ? 'ÖVERSKOTT → INK1 RUTA 10.1' : 'UNDERSKOTT → INK1 RUTA 10.2'}
+                  </div>
+                  <div style={{ fontFamily: C.font, fontSize: 52, fontWeight: 300, color: ega.slutlig >= 0 ? C.green : C.red, lineHeight: 1, marginBottom: 4 }}>
+                    {fmt(Math.abs(ega.slutlig))}
+                    <span style={{ fontSize: 20, marginLeft: 8, opacity: .5 }}>kr</span>
+                  </div>
+                  <div style={{ fontFamily: C.mono, fontSize: 10, color: C.muted, marginTop: 8, letterSpacing: '.06em' }}>
+                    Total skatt & avgifter: <span style={{ color: C.accent }}>{fmt(ega.tot)} kr</span>
+                  </div>
+                </div>
+
+                {/* Verksamhetens art */}
+                <div style={{ marginBottom: 16 }}>
+                  <Label>Verksamhetens art (obligatorisk)</Label>
+                  <input type="text" value={verksamhetensArt} onChange={e => setVerksamhetensArt(e.target.value)}
+                    placeholder="T.ex. Konsulttjänster, Artistisk verksamhet..."
+                    style={{ width: '100%', fontFamily: C.font, fontSize: 14, padding: '10px 14px', background: verksamhetensArt ? '#111' : 'rgba(232,197,71,.04)', border: `1px solid ${verksamhetensArt ? C.border : C.accent}`, color: C.text, outline: 'none', boxSizing: 'border-box' }} />
+                </div>
+
+                {/* Download buttons */}
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={() => {
+                      const rawOrg = sieData.orgNumber.replace(/[-+]/g, '')
+                      const orgFull = rawOrg.length === 10 ? (parseInt(rawOrg.substring(0,2)) <= 25 ? '20' : '19') + rawOrg : rawOrg
+                      const now = new Date()
+                      const d = now.getFullYear().toString() + String(now.getMonth()+1).padStart(2,'0') + String(now.getDate()).padStart(2,'0')
+                      const t = String(now.getHours()).padStart(2,'0') + String(now.getMinutes()).padStart(2,'0') + String(now.getSeconds()).padStart(2,'0')
+                      const intr = Math.abs(mapping.int); const kst = mapping.kst; const bokfO = mapping.bokf
+                      const sru = [`#BLANKETT NE-2025P4`, `#IDENTITET ${orgFull} ${d} ${t}`, sieData.companyName ? `#NAMN ${sieData.companyName}` : '',
+                        `#UPPGIFT 7011 ${sieData.fiscalYearStart || '20250101'}`, `#UPPGIFT 7012 ${sieData.fiscalYearEnd || '20251231'}`,
+                        `#UPPGIFT 7023 X`, verksamhetensArt ? `#UPPGIFT 7020 ${verksamhetensArt}` : '',
+                        intr ? `#UPPGIFT 7400 ${intr}` : '', kst ? `#UPPGIFT 7501 ${kst}` : '',
+                        `#UPPGIFT 7440 ${bokfO}`, `#UPPGIFT 7600 ${bokfO}`,
+                        (j.hemmakontor||0) > 0 ? `#UPPGIFT 7701 ${j.hemmakontor}` : '',
+                        (Math.round((j.resor_mil||0)*25+(j.resor_trakt||0)*290)) > 0 ? `#UPPGIFT 7704 ${Math.round((j.resor_mil||0)*25+(j.resor_trakt||0)*290)}` : '',
+                        (j.r28||0) > 0 ? `#UPPGIFT 7610 ${j.r28}` : '', (j.r29||0) > 0 ? `#UPPGIFT 7713 ${j.r29}` : '',
+                        (j.r24||0) > 0 ? `#UPPGIFT 7711 ${j.r24}` : '', (j.r10||0) > 0 ? `#UPPGIFT 7730 ${j.r10}` : '',
+                        ega.slutlig > 0 ? `#UPPGIFT 8046 X` : '', ega.slutlig > 0 ? `#UPPGIFT 8000 X` : '',
+                        ega.sum > 0 ? `#UPPGIFT 8009 ${ega.sum}` : '', ega.ned > 0 ? `#UPPGIFT 8011 ${ega.ned}` : '',
+                        ega.slutlig > 0 ? `#UPPGIFT 7714 ${Math.floor(ega.slutlig/3)}` : '',
+                        ega.slutlig > 0 ? `#UPPGIFT 7630 ${ega.slutlig}` : `#UPPGIFT 7730 ${Math.abs(ega.slutlig)}`,
+                        `#SYSTEMINFO SkattAI/Normiq`, `#BLANKETTSLUT`, `#FIL_SLUT`,
+                      ].filter(Boolean).join('\n')
+                      const a = document.createElement('a')
+                      a.href = URL.createObjectURL(new Blob([sru], { type: 'text/plain' }))
+                      a.download = 'BLANKETTER.SRU'; a.click()
+                      setTimeout(() => {
+                        const info = `#DATABESKRIVNING_START\n#PRODUKT SRU\n#SKAPAD ${d} ${t}\n#PROGRAM SkattAI/Normiq 1.0\n#FILNAMN BLANKETTER.SRU\n#DATABESKRIVNING_SLUT\n#MEDIELEV_START\n#ORGNR ${orgFull}\n${sieData.companyName ? `#NAMN ${sieData.companyName}` : ''}\n#MEDIELEV_SLUT`
+                        const b = document.createElement('a')
+                        b.href = URL.createObjectURL(new Blob([info], { type: 'text/plain' }))
+                        b.download = 'INFO.SRU'; b.click()
+                      }, 400)
+                    }}
+                    style={{ flex: 1, padding: '14px', background: C.accent, color: '#000', border: 'none', cursor: 'pointer', fontFamily: C.mono, fontSize: 11, fontWeight: 700, letterSpacing: '.1em' }}>
+                    ↓ BLANKETTER.SRU + INFO.SRU
+                  </button>
+                </div>
+
+                <div style={{ marginTop: 12, fontFamily: C.mono, fontSize: 10, color: C.muted, lineHeight: 1.7 }}>
+                  Ladda upp båda filerna på <span style={{ color: C.accent }}>skatteverket.se</span> → Inkomstdeklaration 1 → Ladda upp fil
+                </div>
+              </div>
+            </div>
+          </div>
+        </>)}
+      </div>
+
+      {parsing && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(10,10,10,.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontFamily: C.mono, fontSize: 11, color: C.accent, letterSpacing: '.2em', marginBottom: 8 }}>ANALYSERAR SIE-FIL...</div>
+            <div style={{ fontFamily: C.font, fontSize: 24, color: C.text, fontWeight: 300 }}>Mappar konton → NE-rader</div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
