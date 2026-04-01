@@ -400,7 +400,6 @@ export default function DeklaraPage() {
     traktamente: null,
     pension: null,
     slp: 'nej',  // SLP beräknas automatiskt — ingen separat fråga
-    sjuklon: null,
     ega_fg: null,
     underskott: null,
     pfonder: null,
