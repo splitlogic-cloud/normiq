@@ -869,12 +869,13 @@ export default function DeklaraPage() {
 
   // ── Load historik ─────────────────────────────
   const loadHistorik = useCallback(async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('deklarationer')
       .select('id, inkomstar, company_name, org_number, status, updated_at')
       .order('inkomstar', { ascending: false })
       .order('updated_at', { ascending: false })
     if (data) setHistorik(data)
+    if (error) console.warn('loadHistorik error:', error.message, error.code)
   }, [supabase])
 
   useEffect(() => { loadHistorik() }, [loadHistorik])
@@ -910,6 +911,7 @@ export default function DeklaraPage() {
     }
     const { blanketter, info } = generateSRU()
     const payload = {
+      user_id: user.id,   // krävs för RLS: auth.uid() = user_id
       inkomstar,
       company_name: sieData.companyName,
       org_number: sieData.orgNumber,
