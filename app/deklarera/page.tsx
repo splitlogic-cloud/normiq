@@ -929,8 +929,19 @@ export default function DeklaraPage() {
       }
       await loadHistorik()
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      alert('Kunde inte spara: ' + msg)
+      console.error('Save error:', err)
+      // Supabase returns error objects with .message, not Error instances
+      const msg = err instanceof Error
+        ? err.message
+        : (err as {message?: string})?.message
+          ?? JSON.stringify(err)
+      // Common Supabase errors
+      let userMsg = 'Kunde inte spara. Försök igen.'
+      if (msg.includes('JWT')) userMsg = 'Din session har gått ut — logga in igen.'
+      else if (msg.includes('violates row-level')) userMsg = 'Behörighetsfel — kontrollera att du är inloggad med rätt konto.'
+      else if (msg.includes('deklarationer') && msg.includes('does not exist')) userMsg = 'Databasen är inte konfigurerad. Kör SQL-migrationen i Supabase.'
+      else if (msg) userMsg = msg
+      alert(userMsg)
     } finally {
       setSaving(false)
     }
@@ -1714,7 +1725,7 @@ export default function DeklaraPage() {
 
             {/* Calc summary */}
             <div style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, marginTop: 20, overflow: 'hidden' }}>
-              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: sgn(s3.dD) }, { l: '§D Räntefördelning', v: j.useRF ? sgn(s3.dD) : '—' }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }, { l: '§I Resor & traktamente', v: sgn(s3.dI||0) }, { l: '§J Hemmakontor', v: sgn(s3.dJ||0) }, { l: 'SLP Pens.avgift (24,26% × R24)', v: (s3.dSLP||0) !== 0 ? sgn(s3.dSLP||0) : '—' },
+              {[{ l: 'Bokfört överskott', v: fmt(bokf) + ' kr' }, { l: '§A Avskrivningar', v: sgn(s3.dA) }, { l: '§B Periodiseringsfond', v: sgn(s3.dB) }, { l: '§C Expansionsfond', v: sgn(s3.dC) }, { l: '§D Räntefördelning', v: j.useRF ? sgn(s3.dD) : '—' }, { l: '§E Underskott', v: sgn(s3.dE) }, { l: '§F Pension & sjuklön', v: sgn(s3.dF) }, { l: '§G Egenavgifter föregående år', v: sgn(s3.dG) }, { l: '§H Övriga', v: sgn(s3.dH) }, { l: '§I Resor & traktamente', v: sgn(s3.dI||0) }, { l: '§J Hemmakontor', v: sgn(s3.dJ||0) }, { l: 'SLP Pens.avgift (24,26% × R24)', v: (s3.dSLP||0) !== 0 ? sgn(s3.dSLP||0) : '—' },
                       { l: 'R45 Kvittning tjänst', v: (s3.r45||0) > 0 ? '−' + fmt(s3.r45||0) + ' kr' : '—' },
                       { l: 'R46 Kvittning kapital', v: (s3.r46||0) > 0 ? '−' + fmt(s3.r46||0) + ' kr' : '—' }].map((row, i) => (
                 <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 14px', borderBottom: '1px solid #DDD8CF', fontSize: 13 }}>
