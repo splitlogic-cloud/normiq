@@ -551,14 +551,20 @@ export default function DeklaraPage() {
         { code: 'R16', label: 'Hemmakontor', value: s3.dJ || 0 },
       ].filter(r => r.value !== 0),
       ega: { sum: ega.sum, ned: ega.ned, netto: ega.netto, avd25: ega.avd25, slutlig: ega.slutlig, kom: ega.kom, beg: ega.beg, tot: ega.tot },
+      s3,
       flags: mapping?.flags || [],
       sruContent: blanketter,
       bsData: bs,
+      bs,
+      mapping,
       j: jWithUtland,
+      jWithUtland,
       utlandResor,
       verksamhetensArt,
       uppdragstagare,
       saknarTillgangar,
+      passiv,
+      kommunalskatt,
     }
     try {
       const res = await fetch('/api/deklarera/pdf', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
