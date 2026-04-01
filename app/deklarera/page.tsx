@@ -395,10 +395,11 @@ export default function DeklaraPage() {
   const [avstamning, setAvstamning] = useState<Record<string, 'ja' | 'nej' | null>>({
     avskrivningar: null,
     expansionsfond: null,
+    rantefordelning: null,
     hemmakontor: null,
     traktamente: null,
     pension: null,
-    slp: null,
+    slp: 'nej',  // SLP beräknas automatiskt — ingen separat fråga
     sjuklon: null,
     ega_fg: null,
     underskott: null,
@@ -1515,22 +1516,29 @@ export default function DeklaraPage() {
               <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, background: '#EBF3FA', borderLeft: '2px solid #5A96C8', color: '#2A5070', borderRadius: 2 }}>
                 Omvandlar näringsinkomst till kapitalinkomst (30% skatt). Max = 7,96% × kapitalunderlag + sparat fördelningsbelopp fg år (R25). Välj aktivt om du vill använda.
               </div>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDD8CF', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input type="checkbox" id="useRF" checked={!!j.useRF} onChange={e => {
-                  setJv('useRF', e.target.checked ? 1 : 0)
-                  if (e.target.checked) {
-                    // Auto-fill R19 med maxbeloppet — användaren kan minska det
-                    const maxRF = Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0)
-                    setJv('r19', maxRF)
-                  } else {
-                    setJv('r19', 0)
-                  }
-                }} style={{ cursor: 'pointer', width: 15, height: 15 }} />
-                <label htmlFor="useRF" style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#2A5070', cursor: 'pointer', letterSpacing: '.04em' }}>
-                  Ja, jag vill använda positiv räntefördelning
-                </label>
-              </div>
-              {!!j.useRF && (<>
+              {(() => {
+                const av = avstamning['rantefordelning']
+                return (
+                  <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDD8CF', background: av === null ? '#FFFAFA' : av === 'ja' ? '#F5FBF7' : '#FAFAFA', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ flex: 1, fontSize: 13, color: '#3A3832' }}>Vill du använda positiv räntefördelning? (Omvandlar näringsinkomst till kapitalinkomst, 30% skatt)</div>
+                    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                      <button onClick={() => {
+                        setAv('rantefordelning', 'ja')
+                        setJv('useRF', 1)
+                        const maxRF = Math.floor(((j.r17||0) + (j.r25_rf||0))*0.0796) + (j.r25_rf||0)
+                        setJv('r19', maxRF)
+                      }} style={{ padding: '4px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', borderRadius: 2, border: '1px solid', background: av === 'ja' ? '#2D6A4F' : '#fff', color: av === 'ja' ? '#fff' : '#3A3832', borderColor: av === 'ja' ? '#2D6A4F' : '#C8C3BA', fontWeight: av === 'ja' ? 600 : 400 }}>Ja</button>
+                      <button onClick={() => {
+                        setAv('rantefordelning', 'nej')
+                        setJv('useRF', 0)
+                        setJv('r19', 0)
+                      }} style={{ padding: '4px 14px', fontFamily: 'DM Mono, monospace', fontSize: 11, cursor: 'pointer', borderRadius: 2, border: '1px solid', background: av === 'nej' ? '#6A6660' : '#fff', color: av === 'nej' ? '#fff' : '#3A3832', borderColor: av === 'nej' ? '#6A6660' : '#C8C3BA', fontWeight: av === 'nej' ? 600 : 400 }}>Nej</button>
+                    </div>
+                    {av === null && <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', letterSpacing: '.06em', flexShrink: 0 }}>SVAR KRÄVS</span>}
+                  </div>
+                )
+              })()}
+              {!!j.useRF && avstamning['rantefordelning'] === 'ja' && (<>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R17</span>
                   <div><div style={{ fontSize: 13, color: '#3A3832' }}>Kapitalunderlag (ingående justerat EK)</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Auto från balansräkning</div></div>
