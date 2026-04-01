@@ -1,8 +1,8 @@
 /**
- * Normiq — Automatisk källuppdatering
- * =====================================
- * Begränsar chunks per källa för att undvika Vercel 60s timeout.
- * IL/ML etc är stora lagar — vi indexerar bara de mest relevanta delarna.
+ * Normiq — Nattlig källuppdatering via Inngest
+ * =============================================
+ * Paragraf-aware chunkning + chunk-begränsning för att undvika Vercel timeout.
+ * Körs varje natt kl 02:00 UTC.
  */
 
 import { inngest } from '@/lib/inngest'
@@ -13,50 +13,30 @@ import { Resend } from 'resend'
 
 // ── INSTÄLLNINGAR ─────────────────────────────────────────────────────────
 
-const CHUNK_SIZE    = 600   // Större chunks = färre API-anrop
-const CHUNK_OVERLAP = 100
-const BATCH_SIZE    = 10    // Fler per batch = snabbare
-const DELAY_MS      = 200
-const MAX_CHUNKS    = 80    // Max chunks per källa — undviker timeout
-const MAX_TEXT_LEN  = 120_000 // Max tecken att indexera per källa
+const BATCH_SIZE  = 10
+const DELAY_MS    = 200
+const MAX_CHUNKS  = 100   // Max chunks per källa (undviker 60s Vercel timeout)
+const MAX_TEXT    = 150_000 // Max tecken att processa per källa
 
-// ── KÄLLOR ────────────────────────────────────────────────────────────────
+// ── TYPER ─────────────────────────────────────────────────────────────────
 
-const LAGAR = [
-  { sfs: '1999:1229', ref: 'IL',  namn: 'Inkomstskattelagen' },
-  { sfs: '2023:200',  ref: 'ML',  namn: 'Mervärdesskattelagen' },
-  { sfs: '2011:1244', ref: 'SFL', namn: 'Skatteförfarandelagen' },
-  { sfs: '1999:1078', ref: 'BFL', namn: 'Bokföringslagen' },
-  { sfs: '2005:551',  ref: 'ABL', namn: 'Aktiebolagslagen' },
-]
+interface Chunk {
+  ref: string
+  rubrik: string
+  lag: string
+  text: string
+}
 
-const SKV_VAGLEDNING = [
-  { ref: 'SKV-representation',   url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1508.html',  rubrik: 'Representation' },
-  { ref: 'SKV-traktamente',      url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1600.html',  rubrik: 'Traktamente' },
-  { ref: 'SKV-personalformaner', url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1400.html',  rubrik: 'Personalförmåner' },
-  { ref: 'SKV-utdelning-3-12',   url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/3300.html',  rubrik: 'Utdelning fåmansföretag 3:12' },
-  { ref: 'SKV-avdrag',           url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1100.html',  rubrik: 'Avdrag i näringsverksamhet' },
-]
+type IndexResult = {
+  ref: string
+  status: 'updated' | 'unchanged' | 'failed'
+  chunks: number
+  error: string
+}
 
 // ── HJÄLPFUNKTIONER ───────────────────────────────────────────────────────
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-
-function chunkText(text: string): string[] {
-  // Begränsa texten tidigt
-  const limited = text.slice(0, MAX_TEXT_LEN)
-  const words = limited.split(/\s+/).filter(Boolean)
-  const chunks: string[] = []
-  for (let i = 0; i < words.length && chunks.length < MAX_CHUNKS; i += CHUNK_SIZE - CHUNK_OVERLAP) {
-    const chunk = words.slice(i, i + CHUNK_SIZE).join(' ').trim()
-    if (chunk.length > 50) chunks.push(chunk)
-  }
-  return chunks
-}
-
-function hashText(text: string): string {
-  return createHash('sha256').update(text.slice(0, 10000)).digest('hex').slice(0, 16)
-}
 
 function stripHtml(html: string): string {
   return html
@@ -73,6 +53,71 @@ function stripHtml(html: string): string {
     .trim()
 }
 
+// Paragraf-aware chunkning — delar vid §-tecken
+function chunkByParagraph(text: string, kortnamn: string, lagnamn: string): Chunk[] {
+  const limited = text.slice(0, MAX_TEXT)
+  const chunks: Chunk[] = []
+  const lines = limited.split(/\s{2,}|\n/).map(l => l.trim()).filter(l => l.length > 10)
+
+  let currentKapitel = ''
+  let currentRubrik  = ''
+  let buffer         = ''
+  let currentPar     = ''
+
+  const saveChunk = () => {
+    if (buffer.trim().length > 80 && currentPar) {
+      const ref = `${kortnamn} ${currentKapitel} ${currentPar}`.trim().replace(/\s+/g, ' ')
+      chunks.push({
+        ref,
+        rubrik: currentRubrik || lagnamn,
+        lag: lagnamn,
+        text: `[${ref}] ${currentRubrik}\n\n${buffer.trim()}`,
+      })
+    }
+  }
+
+  for (const line of lines) {
+    if (chunks.length >= MAX_CHUNKS) break
+
+    const kapMatch = line.match(/^(\d+)\s+kap\.?\s*(.*)/i)
+    if (kapMatch) {
+      saveChunk(); buffer = ''; currentPar = ''
+      currentKapitel = `${kapMatch[1]} kap.`
+      currentRubrik  = kapMatch[2]?.replace(/[*_]+/g, '').trim() || ''
+      continue
+    }
+
+    const parMatch = line.match(/^(\d+)\s*§/) || line.match(/^§\s*(\d+)/)
+    if (parMatch) {
+      saveChunk(); buffer = line
+      currentPar = `${parMatch[1]} §`
+      continue
+    }
+
+    if (currentPar) buffer += ' ' + line
+  }
+  saveChunk()
+
+  // Fallback om paragraf-parsing gav för lite
+  if (chunks.length < 3) {
+    return chunkByWords(limited, kortnamn, lagnamn, lagnamn)
+  }
+
+  return chunks.slice(0, MAX_CHUNKS)
+}
+
+function chunkByWords(text: string, ref: string, rubrik: string, lag: string): Chunk[] {
+  const CHUNK_SIZE = 500
+  const OVERLAP    = 80
+  const words = text.slice(0, MAX_TEXT).split(/\s+/).filter(Boolean)
+  const chunks: Chunk[] = []
+  for (let i = 0; i < words.length && chunks.length < MAX_CHUNKS; i += CHUNK_SIZE - OVERLAP) {
+    const chunk = words.slice(i, i + CHUNK_SIZE).join(' ').trim()
+    if (chunk.length > 80) chunks.push({ ref, rubrik, lag, text: chunk })
+  }
+  return chunks
+}
+
 async function fetchText(url: string): Promise<string> {
   try {
     const res = await fetch(url, {
@@ -85,26 +130,18 @@ async function fetchText(url: string): Promise<string> {
     })
     if (!res.ok) return ''
     return stripHtml(await res.text())
-  } catch {
-    return ''
-  }
-}
-
-type IndexResult = {
-  ref: string
-  status: 'updated' | 'unchanged' | 'failed'
-  chunks: number
-  error: string
+  } catch { return '' }
 }
 
 async function indexSource(params: {
   ref: string
+  lagnamn: string
   text: string
   url: string
-  rubrik: string
-  lag: string
+  rubrik?: string
+  useParagraphChunking?: boolean
 }): Promise<IndexResult> {
-  const { ref, text, url, rubrik, lag } = params
+  const { ref, lagnamn, text, url, rubrik, useParagraphChunking = false } = params
 
   if (!text || text.length < 300) {
     return { ref, status: 'failed', chunks: 0, error: `För lite text: ${text.length} tecken` }
@@ -116,9 +153,8 @@ async function indexSource(params: {
   )
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
 
-  const hash = hashText(text)
+  const hash = createHash('sha256').update(text.slice(0, 20000)).digest('hex').slice(0, 16)
 
-  // Kolla om oförändrad
   const { data: existing } = await supabase
     .from('source_versions')
     .select('content_hash')
@@ -132,46 +168,52 @@ async function indexSource(params: {
   // Radera gamla chunks
   await supabase.from('documents').delete().eq('metadata->>ref', ref)
 
-  const chunks = chunkText(text)
-  let saved = 0
+  // Chunka
+  const chunks = useParagraphChunking
+    ? chunkByParagraph(text, ref, lagnamn)
+    : chunkByWords(text, ref, rubrik || ref, lagnamn)
 
+  if (chunks.length === 0) {
+    return { ref, status: 'failed', chunks: 0, error: 'Inga chunks genererades' }
+  }
+
+  // Embedda och spara
+  let saved = 0
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE)
     try {
       const embRes = await openai.embeddings.create({
         model: 'text-embedding-3-small',
-        input: batch,
+        input: batch.map(c => c.text),
       })
-      const rows = batch.map((content, j) => ({
-        content,
-        metadata: { ref, rubrik, lag },
+      const rows = batch.map((chunk, j) => ({
+        content: chunk.text,
+        metadata: { ref: chunk.ref, rubrik: chunk.rubrik, lag: chunk.lag },
         embedding: embRes.data[j].embedding,
       }))
       const { error } = await supabase.from('documents').insert(rows)
       if (!error) saved += batch.length
-      else console.error(`Insert error: ${error.message}`)
     } catch (e) {
       console.error(`Embed error: ${e}`)
     }
     await sleep(DELAY_MS)
   }
 
-  // Spara hash oavsett — så vi inte försöker igen i onödan
+  // Spara hash
   await supabase.from('source_versions').upsert({
-    ref,
-    content_hash: hash,
-    url,
+    ref, content_hash: hash, url,
     updated_at: new Date().toISOString(),
   })
 
-  if (saved === 0) {
-    return { ref, status: 'failed', chunks: 0, error: 'Embedding misslyckades' }
+  return {
+    ref,
+    status: saved > 0 ? 'updated' : 'failed',
+    chunks: saved,
+    error: saved === 0 ? 'Embedding misslyckades' : '',
   }
-
-  return { ref, status: 'updated', chunks: saved, error: '' }
 }
 
-// ── INNGEST ───────────────────────────────────────────────────────────────
+// ── INNGEST-FUNKTION ──────────────────────────────────────────────────────
 
 export const updateSources = inngest.createFunction(
   {
@@ -182,38 +224,75 @@ export const updateSources = inngest.createFunction(
   },
   async ({ step }) => {
 
-    // Lagar — ett steg per lag
-    const ilResult  = await step.run('index-IL',  () => fetchText(`https://rkrattsbaser.gov.se/sfst?bet=1999:1229`).then(t => indexSource({ ref: 'IL',  text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=1999:1229', rubrik: 'Inkomstskattelagen',   lag: 'Inkomstskattelagen' })))
-    const mlResult  = await step.run('index-ML',  () => fetchText(`https://rkrattsbaser.gov.se/sfst?bet=2023:200`).then(t =>  indexSource({ ref: 'ML',  text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=2023:200',  rubrik: 'Mervärdesskattelagen',  lag: 'Mervärdesskattelagen' })))
-    const sflResult = await step.run('index-SFL', () => fetchText(`https://rkrattsbaser.gov.se/sfst?bet=2011:1244`).then(t => indexSource({ ref: 'SFL', text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=2011:1244', rubrik: 'Skatteförfarandelagen', lag: 'Skatteförfarandelagen' })))
-    const bflResult = await step.run('index-BFL', () => fetchText(`https://rkrattsbaser.gov.se/sfst?bet=1999:1078`).then(t => indexSource({ ref: 'BFL', text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=1999:1078', rubrik: 'Bokföringslagen',        lag: 'Bokföringslagen' })))
-    const ablResult = await step.run('index-ABL', () => fetchText(`https://rkrattsbaser.gov.se/sfst?bet=2005:551`).then(t =>  indexSource({ ref: 'ABL', text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=2005:551',  rubrik: 'Aktiebolagslagen',      lag: 'Aktiebolagslagen' })))
-
-    // SKV — ett steg per sida
-    const skvResults: IndexResult[] = []
-    for (const sida of SKV_VAGLEDNING) {
-      const result = await step.run(`index-${sida.ref}`, () =>
-        fetchText(sida.url).then(t => indexSource({
-          ref: sida.ref,
-          text: t,
-          url: sida.url,
-          rubrik: sida.rubrik,
-          lag: 'Skatteverkets vägledning',
-        }))
+    // ── Lagar med paragraf-aware chunkning ──
+    const ilResult = await step.run('index-IL', () =>
+      fetchText('https://rkrattsbaser.gov.se/sfst?bet=1999:1229').then(t =>
+        indexSource({ ref: 'IL', lagnamn: 'Inkomstskattelagen', text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=1999:1229', useParagraphChunking: true })
       )
-      skvResults.push(result)
-    }
+    )
+    const mlResult = await step.run('index-ML', () =>
+      fetchText('https://rkrattsbaser.gov.se/sfst?bet=2023:200').then(t =>
+        indexSource({ ref: 'ML', lagnamn: 'Mervärdesskattelagen', text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=2023:200', useParagraphChunking: true })
+      )
+    )
+    const sflResult = await step.run('index-SFL', () =>
+      fetchText('https://rkrattsbaser.gov.se/sfst?bet=2011:1244').then(t =>
+        indexSource({ ref: 'SFL', lagnamn: 'Skatteförfarandelagen', text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=2011:1244', useParagraphChunking: true })
+      )
+    )
+    const bflResult = await step.run('index-BFL', () =>
+      fetchText('https://rkrattsbaser.gov.se/sfst?bet=1999:1078').then(t =>
+        indexSource({ ref: 'BFL', lagnamn: 'Bokföringslagen', text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=1999:1078', useParagraphChunking: true })
+      )
+    )
+    const ablResult = await step.run('index-ABL', () =>
+      fetchText('https://rkrattsbaser.gov.se/sfst?bet=2005:551').then(t =>
+        indexSource({ ref: 'ABL', lagnamn: 'Aktiebolagslagen', text: t, url: 'https://rkrattsbaser.gov.se/sfst?bet=2005:551', useParagraphChunking: true })
+      )
+    )
 
-    // Rapport
+    // ── SKV rättslig vägledning ──
+    const skvRep = await step.run('index-SKV-representation', () =>
+      fetchText('https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1508.html').then(t =>
+        indexSource({ ref: 'SKV-representation', lagnamn: 'Skatteverkets vägledning', rubrik: 'Representation', text: t, url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1508.html' })
+      )
+    )
+    const skvTrak = await step.run('index-SKV-traktamente', () =>
+      fetchText('https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1600.html').then(t =>
+        indexSource({ ref: 'SKV-traktamente', lagnamn: 'Skatteverkets vägledning', rubrik: 'Traktamente', text: t, url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1600.html' })
+      )
+    )
+    const skvForm = await step.run('index-SKV-personalformaner', () =>
+      fetchText('https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1400.html').then(t =>
+        indexSource({ ref: 'SKV-personalformaner', lagnamn: 'Skatteverkets vägledning', rubrik: 'Personalförmåner', text: t, url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1400.html' })
+      )
+    )
+    const skv312 = await step.run('index-SKV-3-12', () =>
+      fetchText('https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/3300.html').then(t =>
+        indexSource({ ref: 'SKV-utdelning-3-12', lagnamn: 'Skatteverkets vägledning', rubrik: 'Utdelning fåmansföretag 3:12', text: t, url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/3300.html' })
+      )
+    )
+    const skvMoms = await step.run('index-SKV-moms', () =>
+      fetchText('https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/2940.html').then(t =>
+        indexSource({ ref: 'SKV-moms-allmant', lagnamn: 'Skatteverkets vägledning', rubrik: 'Moms — allmänt', text: t, url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/2940.html' })
+      )
+    )
+    const skvAvdrag = await step.run('index-SKV-avdrag', () =>
+      fetchText('https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1100.html').then(t =>
+        indexSource({ ref: 'SKV-avdrag', lagnamn: 'Skatteverkets vägledning', rubrik: 'Avdrag i näringsverksamhet', text: t, url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1100.html' })
+      )
+    )
+
+    // ── Rapport ──
     await step.run('send-report', async () => {
-      const all = [ilResult, mlResult, sflResult, bflResult, ablResult, ...skvResults]
+      const all = [ilResult, mlResult, sflResult, bflResult, ablResult, skvRep, skvTrak, skvForm, skv312, skvMoms, skvAvdrag]
       const updated   = all.filter(r => r.status === 'updated')
       const failed    = all.filter(r => r.status === 'failed')
       const unchanged = all.filter(r => r.status === 'unchanged')
       const total     = updated.reduce((s, r) => s + r.chunks, 0)
 
       if (updated.length === 0 && failed.length === 0) {
-        return { unchanged: unchanged.length }
+        return { message: 'Inga ändringar', unchanged: unchanged.length }
       }
 
       const resend = new Resend(process.env.RESEND_API_KEY!)
@@ -229,21 +308,25 @@ export const updateSources = inngest.createFunction(
               normi<span style="color:#C0321A">q</span>
             </div>
             <h2 style="font-size:20px;color:#0A0A0C;margin-bottom:20px">Källuppdatering — ${new Date().toLocaleDateString('sv-SE')}</h2>
-            ${updated.length > 0 ? `<div style="background:#EEF6F1;border:1px solid #BFD9CC;border-radius:6px;padding:16px 20px;margin-bottom:16px">
-              <div style="font-family:monospace;font-size:11px;color:#2E6644;text-transform:uppercase;margin-bottom:8px">Uppdaterat (${updated.length}) — ${total} chunks</div>
+            ${updated.length > 0 ? `
+            <div style="background:#EEF6F1;border:1px solid #BFD9CC;border-radius:6px;padding:16px 20px;margin-bottom:16px">
+              <div style="font-family:monospace;font-size:11px;color:#2E6644;text-transform:uppercase;margin-bottom:8px">Uppdaterat — ${total} chunks</div>
               ${updated.map(r => `<div style="font-size:13px;color:#2E6644;margin:4px 0">✓ ${r.ref} — ${r.chunks} chunks</div>`).join('')}
             </div>` : ''}
-            ${failed.length > 0 ? `<div style="background:#FDF4F3;border:1px solid rgba(192,50,26,.2);border-radius:6px;padding:16px 20px;margin-bottom:16px">
+            ${failed.length > 0 ? `
+            <div style="background:#FDF4F3;border:1px solid rgba(192,50,26,.2);border-radius:6px;padding:16px 20px;margin-bottom:16px">
               <div style="font-family:monospace;font-size:11px;color:#C0321A;text-transform:uppercase;margin-bottom:8px">Misslyckades (${failed.length})</div>
               ${failed.map(r => `<div style="font-size:13px;color:#C0321A;margin:4px 0">✕ ${r.ref}${r.error ? ` — ${r.error}` : ''}</div>`).join('')}
             </div>` : ''}
-            <div style="font-family:monospace;font-size:11px;color:#CCC;margin-top:24px">Oförändrade: ${unchanged.length} · ${new Date().toISOString()}</div>
+            <div style="font-family:monospace;font-size:11px;color:#CCC;margin-top:24px">
+              Oförändrade: ${unchanged.length} · ${new Date().toISOString()}
+            </div>
           </div>`,
       })
       return { updated: updated.length, failed: failed.length, unchanged: unchanged.length, total }
     })
 
-    return { IL: ilResult, ML: mlResult, SFL: sflResult, BFL: bflResult, ABL: ablResult, skv: skvResults }
+    return { IL: ilResult, ML: mlResult, SFL: sflResult, BFL: bflResult, ABL: ablResult }
   }
 )
 
