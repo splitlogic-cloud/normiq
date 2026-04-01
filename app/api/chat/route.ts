@@ -78,11 +78,6 @@ function classifyRisk(question: string, sources: { ref: string; text: string }[]
   return { level: 'LÅG', reason: 'Tydlig regel med väldefinierat tillämpningsområde.' }
 }
 
-function verifyAgainstSources(answer: string, sources: { ref: string; text: string }[]): boolean {
-  if (sources.length === 0) return false
-  return sources.some(s => answer.includes(s.ref.split(' ')[0]))
-}
-
 function detectQuestionType(q: string): 'bokforing' | 'skatt' | 'generell' {
   const q2 = q.toLowerCase()
   const bokforing = ['bokför', 'konter', 'debet', 'kredit', 'konto', 'bokslut', 'k2', 'k3', 'periodisera', 'avskrivning', 'balansräkning', 'resultaträkning', 'årsredovisning', 'lager', 'inventarie', 'periodisering', 'upplupna', 'förutbetalda', 'kundförlust', 'inkurans']
@@ -138,6 +133,34 @@ async function createMessageWithRetry(params: Parameters<typeof client.messages.
     }
   }
   throw new Error('Max retries exceeded')
+}
+
+// ── VALIDERA ATT SIFFROR FINNS I KÄLLORNA ────────────────────────────────
+// Extraherar alla procentsatser och belopp från ett svar och
+// kontrollerar att de finns i källtexterna. Returnerar de som saknas.
+function findUnsupportedNumbers(answer: string, sources: { text: string }[]): string[] {
+  const sourceText = sources.map(s => s.text).join(' ')
+
+  // Hitta alla procentsatser i svaret (t.ex. "25%", "12 %", "6%")
+  const percentPattern = /(\d+)\s*%/g
+  const answerPercents: string[] = []
+  let match
+  while ((match = percentPattern.exec(answer)) !== null) {
+    answerPercents.push(match[1])
+  }
+
+  // Kolla om varje procentsats finns i källorna
+  const unsupported = answerPercents.filter(pct => {
+    const inSource = new RegExp(`${pct}\\s*%`).test(sourceText)
+    return !inSource
+  })
+
+  return [...new Set(unsupported)] // Deduplicate
+}
+
+function verifyAgainstSources(answer: string, sources: { ref: string; text: string }[]): boolean {
+  if (sources.length === 0) return false
+  return sources.some(s => answer.includes(s.ref.split(' ')[0]))
 }
 
 export async function POST(req: Request) {
@@ -231,19 +254,35 @@ VIKTIGT — WEBB-SÖKNING:
 Frågan gäller belopp eller regler som uppdateras varje år.
 Använd web_search för att hämta aktuella belopp för 2026 direkt från Skatteverket INNAN du svarar.
 Sök på: "skatteverket [ämne] 2026"
-Ange alltid vilket år beloppet gäller.` : ''
+Ange alltid vilket år beloppet gäller.
+Du får BARA använda belopp och procentsatser som du hämtar via web_search eller som finns i källtexterna ovan.` : ''
 
-  const system = `Du är Normiq — ett söksystem för svenska skatte- och redovisningsregler.
+  const system = `Du är Normiq — ett källbaserat söksystem för svenska skatte- och redovisningsregler.
 
 DIN UPPGIFT:
-Du har fått relevanta källtexter hämtade från svensk lagstiftning och Skatteverkets vägledningar. Din uppgift är att ge ett fullständigt, praktiskt användbart svar baserat på dessa källor.
+Du har fått relevanta källtexter hämtade från svensk lagstiftning och Skatteverkets vägledningar. Din uppgift är att förklara vad källtexterna säger — inte vad du tror eller minns.
 
-VIKTIGT:
-1. Syntetisera informationen från ALLA relevanta källtexter
-2. Ge ett komplett svar som täcker hela frågan
-3. Prioritera Skatteverkets vägledningar och praxis framför ren lagtext
-4. Om källorna inte täcker frågan fullt ut — säg det kort i en mening och hänvisa till Skatteverket. Spekulera aldrig och förklara inte dina egna begränsningar.
-5. Ange alltid beloppsgränser och procentsatser explicit
+═══════════════════════════════════════════════════════
+ABSOLUTA REGLER — BRYTS ALDRIG:
+
+1. ANVÄND BARA SIFFROR FRÅN KÄLLTEXTERNA
+   Procentsatser, belopp och gränsvärden får ENDAST hämtas från källtexterna nedan
+   eller från web_search (om aktiverat). Du får aldrig ange en procentsats eller
+   ett belopp som inte explicit finns i källtexterna. Inte ens om du "vet" svaret.
+
+2. OM KÄLLAN SAKNAS — SÄG DET
+   Om källtexterna inte innehåller svar på frågan: skriv en mening om att du inte
+   hittar källstöd och hänvisa till skatteverket.se. Spekulera aldrig.
+
+3. INGA PÅHITTADE REGELÄNDRINGAR
+   Ange aldrig att en regel har ändrats om det inte explicit framgår av källtexterna.
+   Skriv inte "från [år] gäller..." om det inte finns i källan.
+
+4. MOMSSATSER ÄR KÄNSLIGA
+   Gällande momssatser i Sverige: 25%, 12%, 6%, 0%.
+   Om du vill ange en momssats måste den finnas i källtexterna.
+   Om källorna inte nämner momssatsen — ange den inte.
+═══════════════════════════════════════════════════════
 
 TILLGÄNGLIGA KÄLLOR:
 ${källkontext}
@@ -254,7 +293,7 @@ SVARSFORMAT:
 
 ## [Rubrik]
 
-[Fullständigt svar med exakta lagrum [IL 57 kap. 10 §] och årstal på belopp.]
+[Svar baserat ENBART på källtexterna ovan. Ange exakta lagrum [IL 57 kap. 10 §].]
 
 ---FÖRENKLAT---
 Enkelt uttryckt: [4–7 meningar för någon utan juridisk bakgrund.]
@@ -265,15 +304,11 @@ Exempel: [Konkret exempel med siffror${questionType === 'bokforing' ? '. Visa ko
 Källor: [kommaseparerad lista]
 Risk: ${risk.level} — ${risk.reason}
 
-REGLER:
-1. Ge alltid ett komplett svar — ett halvt svar är sämre än ett längre
-2. Prioritera praktisk nytta: vad behöver användaren faktiskt veta?
-3. Om källorna inte täcker frågan: en mening + hänvisa till skatteverket.se
-4. Risk-raden är ALLTID sista raden
-5. Citera alltid med exakt lagrum [IL 16 kap. 2 §]
-6. Ange alltid årstal på belopp
-7. Svara på svenska
-8. Ge aldrig långa förklaringar om varför du kan ha fel eller om dina begränsningar — om du är osäker, säg det i en mening och hänvisa till SKV`
+YTTERLIGARE REGLER:
+- Ge alltid ett komplett svar — ett halvt svar är sämre än ett längre
+- Risk-raden är ALLTID sista raden
+- Svara på svenska
+- Om du är osäker: en mening + hänvisa till skatteverket.se`
 
   // @ts-expect-error — web_search_20250305 är ett giltigt type-värde
   const tools: Anthropic.Tool[] = useWebSearch ? [{ name: 'web_search', type: 'web_search_20250305' }] : []
@@ -307,10 +342,20 @@ REGLER:
     .map(block => block.type === 'text' ? block.text : '')
     .join('')
 
+  // ── KÄLLVALIDERING: kolla att procentsatser i svaret finns i källorna ──
+  const unsupportedNumbers = findUnsupportedNumbers(answer, retrievedSources)
+  const hasUnsupportedClaims = unsupportedNumbers.length > 0 && !useWebSearch
+
   const verified = verifyAgainstSources(answer, retrievedSources)
-  const finalAnswer = verified
-    ? answer
-    : answer + '\n\n_OBS: Svaret kunde inte verifieras fullt ut mot källtexterna. Kontrollera med originalkällan._'
+
+  let finalAnswer = answer
+
+  // Lägg till varning om svaret innehåller siffror som inte finns i källorna
+  if (hasUnsupportedClaims) {
+    finalAnswer = answer + `\n\n⚠️ _Obs: Svaret innehåller värden (${unsupportedNumbers.map(n => n + '%').join(', ')}) som inte kunde verifieras mot källtexterna. Kontrollera alltid mot [Skatteverket](https://skatteverket.se) innan du agerar._`
+  } else if (!verified) {
+    finalAnswer = answer + '\n\n_OBS: Svaret kunde inte verifieras fullt ut mot källtexterna. Kontrollera med originalkällan._'
+  }
 
   if (!useWebSearch) {
     setCached(lastQuestion, finalAnswer, sourceRefs, risk.level)
