@@ -614,7 +614,7 @@ export default function DeklaraPage() {
     if (r47 > 0) {
       if (!fields['7630']) errors.push('Slutligt överskott (7630) saknas trots positivt resultat')
       if (!fields['8046']) warnings.push('Egenavgifts-markering (8046 X) saknas — SKV beräknar inte EGA')
-      if (!fields['8009']) warnings.push('Beräknade egenavgifter (8009) saknas')
+      // 8009 = kapitalunderlag RF — skickas om kapitalunderlag finns
       if (!fields['7714']) warnings.push('25%-avdrag R43 (7714) saknas')
       if (fields['7730']) errors.push('Underskott (7730) ska inte finnas vid positivt resultat')
     } else if (r47 < 0) {
@@ -738,7 +738,9 @@ export default function DeklaraPage() {
       fv('R3') > 0 ? u(7403, fv('R3')) : '',  // R4 Ränteintäkter
 
       // Kostnader
-      sumKost ? u(7501, sumKost) : '',
+      // R5 Varor (7500) + R6 Övriga externa (7501) splittat
+      fv('R10') > 0 ? u(7500, fv('R10')) : '',  // Varor 40xx-49xx
+      fv('R15') > 0 ? u(7501, fv('R15')) : '',  // Övriga externa 50xx-69xx
       fv('R7') > 0 ? u(7502, Math.abs(fv('R7'))) : '',   // R7 Personal (70xx-76xx)
       fv('R8') > 0 ? u(7503, Math.abs(fv('R8'))) : '',   // R8 Räntekostnader (774x,79xx)
       fv('R17') > 0 ? u(7505, Math.abs(fv('R17'))) : '',  // R10 Avskrivningar inventarier
@@ -780,6 +782,8 @@ export default function DeklaraPage() {
       // Bokfört resultat
       u(7440, bokfOvsk),
       u(7600, bokfOvsk),
+      // 7601 = ej avdragsgilla tillägg (§H)
+      s3.dH > 0 ? u(7601, Math.round(s3.dH)) : '',
 
       // Skattemässiga justeringar
       // R14 Bokförda intäkter ej skattepliktiga — ingen verifierad SRU-kod ännu
@@ -793,8 +797,8 @@ export default function DeklaraPage() {
       j.r12 ? u(7608, Math.round(j.r12||0)) : '',   // Frivillig återföring (samma kod)
 
       // Räntefördelning
-      j.r25_rf ? u(7745, Math.round(j.r25_rf||0)) : '',
-      j.useRF && j.r19 ? u(7750, Math.round(j.r19||0)) : '',
+      // 7745 OGILTIGT i NE-2025P4 — sparat fördelningsbelopp skickas ej
+      j.useRF && j.r19 ? u(7708, Math.round(j.r19||0)) : '',  // R30 Positiv räntefördelning
       j.useRF && j.r20 ? u(7755, Math.round(j.r20||0)) : '',
 
       // §G Egenavgifter föregående år
@@ -811,8 +815,11 @@ export default function DeklaraPage() {
         // Överskott
         u(8046, 'X'),
         u(8000, 'X'),
-        ega.sum ? u(8009, Math.abs(ega.sum)) : '',
-        ega.ned ? u(8011, Math.abs(ega.ned)) : '',
+        // 8009 = kapitalunderlag för räntefördelning (Visma: j.r17)
+        j.r17 ? u(8009, Math.round(j.r17||0)) : '',
+        // 8011 nedsättning EGA — Visma skickar ej, utelämnas
+        // 8012 = kapitalunderlag expansionsfond
+        j.r17 ? u(8012, Math.round(j.r17||0)) : '',
         u(7714, Math.floor(r47 / 3)),  // R43 25%-avdrag = R47/3 (floor = SKV:s metod)
         u(7630, r47),
       ] : [
