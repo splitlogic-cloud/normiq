@@ -614,6 +614,8 @@ export default function DeklaraPage() {
     if (r47 > 0) {
       if (!fields['7630']) errors.push('Slutligt överskott (7630) saknas trots positivt resultat')
       if (!fields['8046']) warnings.push('Egenavgifts-markering (8046 X) saknas — SKV beräknar inte EGA')
+      // Räntefördelning — R19 måste vara ifyllt om useRF
+      if (fields['7708'] && parseInt(fields['7708']) === 0) errors.push('Positiv räntefördelning (R19/7708) är 0 — ange beloppet eller avaktivera räntefördelning')
       // 8009 = kapitalunderlag RF — skickas om kapitalunderlag finns
       if (!fields['7714']) warnings.push('25%-avdrag R43 (7714) saknas')
       if (fields['7730']) errors.push('Underskott (7730) ska inte finnas vid positivt resultat')
@@ -1579,7 +1581,16 @@ export default function DeklaraPage() {
                 Omvandlar näringsinkomst till kapitalinkomst (30% skatt). Max = 7,96% × kapitalunderlag + sparat fördelningsbelopp fg år (R25). Välj aktivt om du vill använda.
               </div>
               <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDD8CF', display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input type="checkbox" id="useRF" checked={!!j.useRF} onChange={e => { setJv('useRF', e.target.checked ? 1 : 0); if (!e.target.checked) { setJv('r19', 0) } }} style={{ cursor: 'pointer', width: 15, height: 15 }} />
+                <input type="checkbox" id="useRF" checked={!!j.useRF} onChange={e => {
+                  setJv('useRF', e.target.checked ? 1 : 0)
+                  if (e.target.checked) {
+                    // Auto-fill R19 med maxbeloppet — användaren kan minska det
+                    const maxRF = Math.round((j.r17||0)*0.0796 + (j.r25_rf||0))
+                    setJv('r19', maxRF)
+                  } else {
+                    setJv('r19', 0)
+                  }
+                }} style={{ cursor: 'pointer', width: 15, height: 15 }} />
                 <label htmlFor="useRF" style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#2A5070', cursor: 'pointer', letterSpacing: '.04em' }}>
                   Ja, jag vill använda positiv räntefördelning
                 </label>
@@ -1602,8 +1613,29 @@ export default function DeklaraPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R19</span>
-                  <div><div style={{ fontSize: 13, color: '#3A3832' }}>Positiv räntefördelning att utnyttja</div><div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>Max {fmt(Math.round((j.r17||0)*0.0796))} kr · Beskattas som kapitalinkomst 30%</div></div>
-                  <input type="number" value={j.r19 || 0} onChange={e => setJv('r19', Math.min(parseInt(e.target.value)||0, Math.round((j.r17||0)*0.0796 + (j.r25_rf||0))))} style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 500, padding: '6px 10px', background: '#F5F0E8', border: '1px solid #C8C3BA', color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                  <div>
+                    <div style={{ fontSize: 13, color: '#3A3832', fontWeight: 500 }}>
+                      Positiv räntefördelning att utnyttja
+                      <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', background: '#FDF0EE', border: '1px solid #E8C4BF', padding: '1px 6px', marginLeft: 8 }}>OBLIGATORISK</span>
+                    </div>
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#9A9690', marginTop: 2 }}>
+                      Max {fmt(Math.round((j.r17||0)*0.0796 + (j.r25_rf||0)))} kr · Beskattas som kapitalinkomst 30% · Kan sparas till nästa år
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <input type="number" value={j.r19 || 0}
+                      onChange={e => setJv('r19', Math.min(parseInt(e.target.value)||0, Math.round((j.r17||0)*0.0796 + (j.r25_rf||0))))}
+                      style={{ fontFamily: 'DM Mono, monospace', fontSize: 12, fontWeight: 600, padding: '6px 10px',
+                        background: (j.r19||0) === 0 ? '#FDF0EE' : '#EFF7F2',
+                        border: `2px solid ${(j.r19||0) === 0 ? '#C0392B' : '#2D6A4F'}`,
+                        color: '#1A1A18', width: '100%', textAlign: 'right', outline: 'none', borderRadius: 2 }} />
+                    {(j.r19||0) === 0 && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#C0392B', letterSpacing: '.06em' }}>⚠ OBLIGATORISK — ange belopp (max {fmt(Math.round((j.r17||0)*0.0796 + (j.r25_rf||0)))} kr)</div>}
+                    {(j.r19||0) > 0 && (j.r19||0) < Math.round((j.r17||0)*0.0796 + (j.r25_rf||0)) && (
+                      <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#92620A' }}>
+                        Sparat: {fmt(Math.round((j.r17||0)*0.0796 + (j.r25_rf||0)) - (j.r19||0))} kr rullas vidare
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>R20</span>
