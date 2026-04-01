@@ -186,10 +186,9 @@ export const updateSources = inngest.createFunction(
   {
     id: 'update-sources',
     name: 'Nattlig källuppdatering',
-    // Kör varje natt kl 02:00 svensk tid
     concurrency: { limit: 1 },
+    triggers: [{ cron: '0 1 * * *' }],
   },
-  { cron: '0 1 * * *' }, // 01:00 UTC = 02:00 vintertid / 03:00 sommartid
   async ({ step, logger }) => {
     const report: {
       updated: string[]
@@ -328,8 +327,7 @@ export const updateSources = inngest.createFunction(
 // ── MANUELL TRIGGER (för testning) ────────────────────────────────────────
 // Anropas via: POST /api/inngest med event { name: 'normiq/sources.update' }
 export const triggerSourceUpdate = inngest.createFunction(
-  { id: 'trigger-source-update', name: 'Manuell källuppdatering' },
-  { event: 'normiq/sources.update' },
+  { id: 'trigger-source-update', name: 'Manuell källuppdatering', triggers: [{ event: 'normiq/sources.update' }] },
   async ({ step }) => {
     await step.invoke('run-update', {
       function: updateSources,
