@@ -393,6 +393,7 @@ export default function DeklaraPage() {
 
   // Avstämning — obligatoriska ja/nej-svar innan man kan gå vidare
   const [avstamning, setAvstamning] = useState<Record<string, 'ja' | 'nej' | null>>({
+    avskrivningar: null,
     hemmakontor: null,
     traktamente: null,
     pension: null,
@@ -401,7 +402,7 @@ export default function DeklaraPage() {
     ega_fg: null,
     underskott: null,
     pfonder: null,
-    ej_skattepliktig: null,  // bokförda intäkter som inte ska tas upp (R14)
+    ej_skattepliktig: null,
   })
   const setAv = (k: string, v: 'ja' | 'nej') => setAvstamning(prev => ({ ...prev, [k]: v }))
   const avstamningKlar = Object.values(avstamning).every(v => v !== null)
@@ -1455,7 +1456,7 @@ export default function DeklaraPage() {
             )}
             {/* Accordions */}
             {[
-              { code: 'NE §A', name: 'Avskrivningar & nedskrivningar', sum: sgn(s3.dA), info: { type: 'blue', text: 'Räkenskapsenlig avskrivning max 30% av ingående UB. Differens mot bokförd = skattemässigt tillägg (+) eller avdrag (−).' }, fields: [{ id: 'r5', label: 'Bokförda avskrivningar på inventarier', hint: 'Konto 7810–7839 i SIE', sie: true }, { id: 'r6', label: 'Skattemässigt tillåtna avskrivningar', hint: 'Max 30% × ingående UB inventarier', sie: true }, { id: 'r7', label: 'Skillnad (R6 − R5)', hint: 'Auto', calc: true }, { id: 'r8', label: 'Nedskrivning lager (återföring)', hint: '' }, { id: 'r9', label: 'Övriga skattemässiga tillägg', hint: 'Omedelbart avdrag inventarier < 28 650 kr' }] },
+              { code: 'NE §A', name: 'Avskrivningar & nedskrivningar', sum: sgn(s3.dA), avKey: 'avskrivningar', avQ: 'Har du skattemässiga avskrivningar som skiljer sig från bokförda, eller nedskrivningar att återföra?', avNej: () => { setJv('r5',0); setJv('r6',0); setJv('r8',0); setJv('r9',0) }, info: { type: 'blue', text: 'Räkenskapsenlig avskrivning max 30% av ingående UB. Differens mot bokförd = skattemässigt tillägg (+) eller avdrag (−).' }, fields: [{ id: 'r5', label: 'Bokförda avskrivningar på inventarier', hint: 'Konto 7810–7839 i SIE', sie: true }, { id: 'r6', label: 'Skattemässigt tillåtna avskrivningar', hint: 'Max 30% × ingående UB inventarier', sie: true }, { id: 'r7', label: 'Skillnad (R6 − R5)', hint: 'Auto', calc: true }, { id: 'r8', label: 'Nedskrivning lager (återföring)', hint: '' }, { id: 'r9', label: 'Övriga skattemässiga tillägg', hint: 'Omedelbart avdrag inventarier < 28 650 kr' }] },
               { code: 'NE §B', name: 'Periodiseringsfond', sum: sgn(s3.dB), avKey: 'pfonder', avQ: 'Har du periodiseringsfonder att återföra, eller vill du sätta av i år (max 30%)?', avNej: () => { setJv('r10',0); setJv('r11',0); setJv('r12',0); setJv('r13',0) }, info: { type: 'amber', text: `⚡ Max avsättning: 30% × ${fmt(bokf)} kr = ${fmt(Math.floor(bokf * 0.30))} kr. Skattebesparning ca ${fmt(Math.round(Math.floor(bokf * 0.30) * 0.30))} kr.` }, fields: [{ id: 'r10', label: 'Årets avsättning till periodiseringsfond', hint: 'Max 30% av skattemässigt överskott · Frivillig' }, { id: 'r11', label: 'Obligatorisk återföring (tax.år 2019)', hint: 'Senaste möjliga återföring' }, { id: 'r12', label: 'Frivillig återföring (tax.år 2020–2024)', hint: '' }, { id: 'r13', label: 'Ränta på kvarvarande fond (1,50%)', hint: '1,50% × ingående fondbalans · Intäkt' }] },
               { code: 'NE §C', name: 'Expansionsfond', sum: sgn(s3.dC), info: { type: 'blue', text: '20,6% fondskatt vid avsättning. Max = justerat eget kapital.' }, fields: [{ id: 'r14', label: 'Avsättning till expansionsfond', hint: '20,6% fondskatt · Frivillig' }, { id: 'r15', label: 'Minskning av expansionsfond', hint: '' }, { id: 'r16', label: 'Expansionsfondsskatt (20,6% × R14)', hint: 'Auto', calc: true }] },
               // NE §D Räntefördelning — rendered separately with opt-in below
@@ -1482,10 +1483,10 @@ export default function DeklaraPage() {
                     </div>
                   )
                 })()}
-                {acc.info && (
+                {acc.info && (!(acc as {avKey?:string}).avKey || avstamning[(acc as {avKey:string}).avKey] !== 'nej') && (
                   <div style={{ margin: '8px 14px', padding: '10px 13px', fontSize: 12, lineHeight: 1.65, borderRadius: 2, background: acc.info.type === 'blue' ? '#EBF3FA' : '#FDF5E6', borderLeft: `2px solid ${acc.info.type === 'blue' ? '#5A96C8' : '#92620A'}`, color: acc.info.type === 'blue' ? '#2A5070' : '#92620A' }}>{acc.info.text}</div>
                 )}
-                {(acc.fields as { id: string; label: string; hint: string; calc?: boolean; sie?: boolean; highlight?: boolean }[]).map(f => (
+                {(!(acc as {avKey?:string}).avKey || avstamning[(acc as {avKey:string}).avKey] !== 'nej') && (acc.fields as { id: string; label: string; hint: string; calc?: boolean; sie?: boolean; highlight?: boolean }[]).map(f => (
                   <div key={f.id} style={{ display: 'grid', gridTemplateColumns: '42px 1fr 148px', gap: 10, alignItems: 'start', padding: '9px 14px', borderBottom: '1px solid #DDD8CF' }}>
                     <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0392B', paddingTop: 2 }}>{f.id.toUpperCase()}</span>
                     <div>
