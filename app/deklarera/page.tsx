@@ -882,7 +882,7 @@ export default function DeklaraPage() {
   // Auto-save — debounced 3 sek efter att j/utlandResor/avstamning ändrats
   const autoSaveTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
-    if (!sieData || !user || step < 4) return  // Bara steg 4+
+    if (!sieData || !user || typeof step !== 'number' || step < 4) return  // Bara steg 4+
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     autoSaveTimer.current = setTimeout(() => {
       saveDeklaration()
