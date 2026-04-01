@@ -258,7 +258,11 @@ function calcStep3(base: number, vals: Record<string, number>) {
   const hkAvdrag = g('hemmakontor') + g('hemmakontor_internet')
   const dI = -resorAvdrag   // maps to NE R22
   const dJ = -hkAvdrag      // maps to NE R16
-  const skattemassigt = base + dA + dB + dC + dD + dE + dF + dG + dH + dI + dJ + dSLP
+  // NE-beräkningsordning:
+  // R17/R29 = bokfört + justeringar (EX R40/R41 — de hanteras EFTER R35 i NE)
+  // R42 = R35 + R40 - R41 (hanteras i calcEga)
+  // Därför: dG ingår INTE i s3.tot — calcEga får r40/r41 separat
+  const skattemassigt = base + dA + dB + dC + dD + dE + dF + dH + dI + dJ + dSLP
   return { dA, dB, dC, dD, dE, dF, dG, dH, dI, dJ, dSLP, r45, r46, tot: skattemassigt }
 }
 
@@ -494,9 +498,8 @@ export default function DeklaraPage() {
   const jWithUtland = { ...j, utland_totalt: utlandTotalt }
   const s3 = calcStep3(bokf, jWithUtland)
   const skattemassigt = j.useManual ? (j.manualOverskott || 0) : s3.tot
-  // calcEga: skattemassigt (R42) INKLUDERAR redan dG (R40−R41 via calcStep3)
-  // Men R40/R41 ska OCKSÅ läggas till underlag för R47 separat (SKV-formel)
-  // Lösning: skicka skattemassigt direkt + r40/r41 så calcEga kan räkna rätt underlag
+  // R42 = skattemassigt (R29 − R30 − R34 − R36 + R37 − R38 − R39)
+  // R40/R41 adderas i calcEga: underlag = R42 + R40 − R41 + R44
   const ega = calcEga(skattemassigt, passiv, extraNed, kommunalskatt, j.r28||0, j.r29||0, j.r25||0)
 
   // Parse flow
