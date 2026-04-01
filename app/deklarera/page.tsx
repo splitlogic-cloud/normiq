@@ -1014,6 +1014,12 @@ export default function DeklaraPage() {
       <aside style={{ width: 240, background: '#fff', borderRight: '1px solid #DDD8CF', padding: '24px 0', position: 'sticky', top: 0, height: '100vh', overflowY: 'auto', flexShrink: 0 }}>
         <div style={{ padding: '0 20px', marginBottom: 4, fontFamily: "'Playfair Display', Georgia, serif", fontSize: 18, fontWeight: 700 }}>Deklarera NE</div>
         <div style={{ padding: '0 20px', fontSize: 11, color: '#9A9690', marginBottom: 10 }}>Taxeringsår 2026 · Inkomstår 2025</div>
+        {/* Progress bar */}
+        {typeof step === 'number' && step > 0 && (
+          <div style={{ margin: '0 20px 14px', height: 3, background: '#EDE8DF', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: '#C0392B', width: `${((step - 1) / 5) * 100}%`, transition: 'width .4s ease', borderRadius: 2 }} />
+          </div>
+        )}
         <div style={{ padding: '6px 20px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #DDD8CF', marginBottom: 14 }}>
           <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#6A6660', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 150 }}>
             {user?.email}
@@ -1062,6 +1068,7 @@ export default function DeklaraPage() {
               <div>
                 <div style={{ fontSize: 13, color: '#3A3832' }}>{s.label}</div>
                 <div style={{ fontSize: 11, color: '#9A9690' }}>{s.sub}</div>
+                {isDone && <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, color: '#2D6A4F', marginTop: 1 }}>✓ Klar</div>}
               </div>
             </div>
           )
@@ -1099,8 +1106,29 @@ export default function DeklaraPage() {
         </div>
       </aside>
 
+      {/* ── STICKY TAX METER ── */}
+      {sieData && typeof step === 'number' && step >= 4 && (
+        <div style={{ position: 'fixed', bottom: 0, left: 240, right: 0, zIndex: 50, background: 'rgba(26,26,24,.96)', backdropFilter: 'blur(8px)', borderTop: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0, height: 52 }}>
+          {[
+            { label: 'Bokfört', value: fmt(bokf) + ' kr', c: '#E8E4DC' },
+            { label: 'Skattemässigt', value: (skattemassigt < 0 ? '−' : '') + fmt(Math.abs(skattemassigt)) + ' kr', c: skattemassigt >= 0 ? '#4CAF7A' : '#E85447' },
+            { label: 'Egenavgifter', value: '−' + fmt(ega.netto) + ' kr', c: '#E85447' },
+            { label: 'Överskott', value: fmt(Math.abs(ega.slutlig)) + ' kr', c: ega.slutlig >= 0 ? '#E8C547' : '#E85447' },
+            { label: 'Total skatt', value: fmt(ega.tot) + ' kr', c: '#E85447' },
+          ].map((item, i) => (
+            <div key={item.label} style={{ display: 'flex', alignItems: 'center' }}>
+              {i > 0 && <div style={{ width: 1, height: 26, background: '#333', margin: '0 20px' }} />}
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 8, letterSpacing: '.12em', color: '#888', textTransform: 'uppercase' as const, marginBottom: 2 }}>{item.label}</div>
+                <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 14, fontWeight: 700, color: item.c }}>{item.value}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── MAIN ── */}
-      <main style={{ flex: 1, minWidth: 0 }}>
+      <main style={{ flex: 1, minWidth: 0, paddingBottom: typeof step === 'number' && step >= 4 ? 60 : 0 }}>
 
         {/* Step 1: Upload */}
         {step === 1 && (
