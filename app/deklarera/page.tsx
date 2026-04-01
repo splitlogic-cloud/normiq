@@ -149,9 +149,9 @@ const NM: Record<string, { r: [string, string][]; inv: boolean; label: string; h
   R10: { r: [['4000','4999']], inv: false, label: 'Varor, material, tjänster',     hint: '4000–4999' },
   R11: { r: [['7000','7399'],['7600','7699']], inv: false, label: 'Löner till anställda', hint: '7000–7699' },
   R12: { r: [['7400','7599']], inv: false, label: 'Arbetsgivaravgifter',            hint: '7400–7599' },
-  R13: { r: [['5000','5999']], inv: false, label: 'Lokalkostnader',                hint: '5000–5999' },
+  // R13 ingår nu i R15 (5+6xxx) — NE R6 = hela övriga externa
   R14: { r: [['6110','6299']], inv: false, label: 'Resekostnader',                 hint: '6110–6299' },
-  R15: { r: [['6000','6109'],['6300','6999']], inv: false, label: 'Övriga externa kostnader', hint: '6000–6999' },
+  R15: { r: [['5000','5999'],['6000','6999']], inv: false, label: 'Övriga externa kostnader (R6)', hint: '5000–6999' },
   R16: { r: [['7800','7899']], inv: false, label: 'Avskrivningar',                 hint: '7800–7899' },
   R17: { r: [['8400','8499']], inv: false, label: 'Räntekostnader',                hint: '8400–8499' },
 }
@@ -175,7 +175,7 @@ function mapSIE(sie: SIEData): MappingData {
     }
   }
   const int = (fields.R1?.value || 0) + (fields.R2?.value || 0) + (fields.R3?.value || 0)
-  const kst = ['R10','R11','R12','R13','R14','R15','R16','R17'].reduce((s, id) => s + (fields[id]?.value || 0), 0)
+  const kst = ['R10','R11','R12','R14','R15','R16','R17'].reduce((s, id) => s + (fields[id]?.value || 0), 0)
   const bokf = int - kst
   // Auto-detect ej avdragsgilla kostnader
   const ejAvdragsgillRepresentation = Math.round(Math.abs(sie.accountTotals['6072'] || 0))
@@ -564,7 +564,7 @@ export default function DeklaraPage() {
       bokfortOverskott: bokf,
       skattemassigt,
       intakter: ['R1','R2','R3'].map(fv).filter(r => r.value > 0),
-      kostnader: ['R10','R11','R12','R13','R14','R15','R16','R17'].map(fv).filter(r => r.value > 0),
+      kostnader: ['R10','R11','R12','R14','R15','R16','R17'].map(fv).filter(r => r.value > 0),
       justeringar: [
         { code: '§A', label: 'Avskrivningsdiff', value: s3.dA },
         { code: '§B', label: 'Periodiseringsfond', value: s3.dB },
@@ -775,7 +775,7 @@ export default function DeklaraPage() {
       // Kostnader
       // R5 Varor (7500) + R6 Övriga externa (7501) splittat
       fv('R10') > 0 ? u(7500, fv('R10')) : '',  // Varor 40xx-49xx
-      (fv('R13')+fv('R15')) > 0 ? u(7501, fv('R13')+fv('R15')) : '',  // R6 Övriga externa = 50xx-69xx (R13+R15)
+      fv('R15') > 0 ? u(7501, fv('R15')) : '',  // R6 Övriga externa = 50xx-69xx
       fv('R7') > 0 ? u(7502, Math.abs(fv('R7'))) : '',   // R7 Personal (70xx-76xx)
       fv('R8') > 0 ? u(7503, Math.abs(fv('R8'))) : '',   // R8 Räntekostnader (774x,79xx)
       fv('R17') > 0 ? u(7505, Math.abs(fv('R17'))) : '',  // R10 Avskrivningar inventarier
@@ -1295,7 +1295,7 @@ export default function DeklaraPage() {
             </div>
 
             {/* Tables */}
-            {[{ title: 'Avsnitt A — Rörelsens intäkter', ids: ['R1','R2','R3'], total: mapping.int }, { title: 'Avsnitt B — Rörelsens kostnader', ids: ['R10','R11','R12','R13','R14','R15','R16','R17'], total: mapping.kst }].map(section => (
+            {[{ title: 'Avsnitt A — Rörelsens intäkter', ids: ['R1','R2','R3'], total: mapping.int }, { title: 'Avsnitt B — Rörelsens kostnader', ids: ['R10','R11','R12','R14','R15','R16','R17'], total: mapping.kst }].map(section => (
               <div key={section.title} style={{ background: '#fff', border: '1px solid #DDD8CF', borderRadius: 4, marginBottom: 18, overflow: 'hidden' }}>
                 <div style={{ padding: '10px 14px', background: '#EDE8DF', borderBottom: '1px solid #DDD8CF', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#9A9690' }}>{section.title}</span>
