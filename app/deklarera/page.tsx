@@ -1453,11 +1453,6 @@ export default function DeklaraPage() {
                 </div>
               </div>
             )}
-            {/* GAMMAL CHECKLISTA BORTTAGEN — frågor inbyggda i varje accordion */}
-            <div style={{ display: 'none' }}>
-            </div>
-            </div>
-
             {/* Accordions */}
             {[
               { code: 'NE §A', name: 'Avskrivningar & nedskrivningar', sum: sgn(s3.dA), info: { type: 'blue', text: 'Räkenskapsenlig avskrivning max 30% av ingående UB. Differens mot bokförd = skattemässigt tillägg (+) eller avdrag (−).' }, fields: [{ id: 'r5', label: 'Bokförda avskrivningar på inventarier', hint: 'Konto 7810–7839 i SIE', sie: true }, { id: 'r6', label: 'Skattemässigt tillåtna avskrivningar', hint: 'Max 30% × ingående UB inventarier', sie: true }, { id: 'r7', label: 'Skillnad (R6 − R5)', hint: 'Auto', calc: true }, { id: 'r8', label: 'Nedskrivning lager (återföring)', hint: '' }, { id: 'r9', label: 'Övriga skattemässiga tillägg', hint: 'Omedelbart avdrag inventarier < 28 650 kr' }] },
