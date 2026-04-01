@@ -775,7 +775,7 @@ export default function DeklaraPage() {
       // Kostnader
       // R5 Varor (7500) + R6 Övriga externa (7501) splittat
       fv('R10') > 0 ? u(7500, fv('R10')) : '',  // Varor 40xx-49xx
-      fv('R15') > 0 ? u(7501, fv('R15')) : '',  // Övriga externa 50xx-69xx
+      (fv('R13')+fv('R15')) > 0 ? u(7501, fv('R13')+fv('R15')) : '',  // R6 Övriga externa = 50xx-69xx (R13+R15)
       fv('R7') > 0 ? u(7502, Math.abs(fv('R7'))) : '',   // R7 Personal (70xx-76xx)
       fv('R8') > 0 ? u(7503, Math.abs(fv('R8'))) : '',   // R8 Räntekostnader (774x,79xx)
       fv('R17') > 0 ? u(7505, Math.abs(fv('R17'))) : '',  // R10 Avskrivningar inventarier
@@ -801,7 +801,11 @@ export default function DeklaraPage() {
         const kundfordr = bsSum('1500','1599'); if (kundfordr > 0) rows.push(u(7250, kundfordr))  // B7
         const ovrigaFordr = bsSum('1600','1899'); if (ovrigaFordr > 0) rows.push(u(7260, ovrigaFordr)) // B8
         const kassa = bsSum('1900','1999'); if (kassa > 0) rows.push(u(7280, kassa))              // B9
-        const ek = llSum('2010','2019') + llSum('2050','2059'); if (ek !== 0) rows.push(u(7300, ek)) // B10 EK
+        // B10 EK = UB eget kapital inkl årets resultat
+        // Visma: 7300 = UB 2010-2099 + bokfört överskott (årets resultat)
+        const ekUB = llSum('2000','2099')
+        const b10ek = ekUB + Math.round(bokfOvsk)  // lägg till årets resultat
+        if (b10ek !== 0) rows.push(u(7300, b10ek))  // B10 EK
         const obeskatt = llSum('2100','2199'); if (obeskatt > 0) rows.push(u(7320, obeskatt))     // B11
         const avsattr = llSum('2200','2299'); if (avsattr > 0) rows.push(u(7330, avsattr))        // B12
         const lanesk = llSum('2300','2399') + llSum('2410','2419') + llSum('2480','2489')
