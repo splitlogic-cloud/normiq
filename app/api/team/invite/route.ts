@@ -52,13 +52,32 @@ export async function POST(req: NextRequest) {
 
   for (const email of emails.slice(0, 10)) {
     try {
-      const { data: invite, error: inviteError } = await supabase
+      // Kolla om inbjudan redan finns (ej accepterad)
+      const { data: existing } = await supabase
         .from('team_invites')
-        .insert({ team_id: team.id, email, invited_by: userId })
-        .select()
+        .select('id, token')
+        .eq('team_id', team.id)
+        .eq('email', email)
+        .is('accepted_at', null)
         .single()
 
-      if (inviteError || !invite) {
+      let invite = existing
+
+      if (!existing) {
+        const { data: newInvite, error: inviteError } = await supabase
+          .from('team_invites')
+          .insert({ team_id: team.id, email, invited_by: userId })
+          .select()
+          .single()
+
+        if (inviteError || !newInvite) {
+          results.push({ email, status: 'error', error: 'Kunde inte skapa inbjudan' })
+          continue
+        }
+        invite = newInvite
+      }
+
+      if (!invite) {
         results.push({ email, status: 'error', error: 'Kunde inte skapa inbjudan' })
         continue
       }
