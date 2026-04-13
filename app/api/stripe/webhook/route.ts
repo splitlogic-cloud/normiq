@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
       const item = sub.items.data[0]
       const period = item?.price?.recurring?.interval === 'year' ? 'yearly' : 'monthly'
-      const periodEnd = new Date((sub.current_period_end) * 1000).toISOString()
+      const periodEnd = sub.items.data[0]?.current_period_end ? new Date(sub.items.data[0].current_period_end * 1000).toISOString() : null
 
       await setSubscriptionStatus(userId, status, {
         stripe_subscription_id: sub.id,
