@@ -684,6 +684,7 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                )}
 
                 {inputMode === 'upload' && (
                   <div>
