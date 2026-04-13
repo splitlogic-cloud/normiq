@@ -112,6 +112,7 @@ export default function Landing() {
             <a href="#funktioner" className="nav-link">Funktioner</a>
             <a href="#priser" className="nav-link">Priser</a>
             <a href="#faq" className="nav-link">FAQ</a>
+            <a href="/om-oss" className="nav-link">Om oss</a>
             <a href="/login" className="nav-link">Logga in</a>
             <a href="/register" className="btn-primary" style={{ padding: '10px 20px' }}>Testa gratis</a>
           </div>
@@ -124,7 +125,7 @@ export default function Landing() {
         </div>
         {mobileMenuOpen && (
           <div style={{ background: 'white', borderTop: '1px solid #E0DDD6', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {[['#hur-det-fungerar','Hur det fungerar'],['#funktioner','Funktioner'],['#priser','Priser'],['#faq','FAQ'],['/login','Logga in']].map(([href, label]) => (
+            {[['#hur-det-fungerar','Hur det fungerar'],['#funktioner','Funktioner'],['#priser','Priser'],['#faq','FAQ'],['/om-oss','Om oss'],['/login','Logga in']].map(([href, label]) => (
               <a key={href} href={href} className="nav-link" onClick={() => setMobileMenuOpen(false)} style={{ fontSize: 14 }}>{label}</a>
             ))}
             <a href="/register" className="btn-primary" style={{ justifyContent: 'center', marginTop: 8 }}>Testa gratis</a>

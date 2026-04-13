@@ -10,6 +10,14 @@ export default function OmOss() {
         .mono { font-family: 'DM Mono', monospace; }
         a { color: #C0321A; text-decoration: none; }
         a:hover { text-decoration: underline; }
+        @media (max-width: 768px) {
+          .main-grid { grid-template-columns: 1fr !important; gap: 48px !important; }
+          .dark-grid  { grid-template-columns: 1fr !important; gap: 48px !important; }
+          .page-pad   { padding: 48px 24px !important; }
+          .hero-pad   { padding: 56px 24px 0 !important; }
+          .dark-sec   { padding: 56px 24px !important; }
+          .footer-inner { flex-direction: column !important; gap: 12px !important; align-items: flex-start !important; }
+        }
       `}</style>
 
       {/* NAV */}
@@ -25,12 +33,12 @@ export default function OmOss() {
       </nav>
 
       {/* HERO */}
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '72px 48px 0' }}>
+      <div className="hero-pad" style={{ maxWidth: 900, margin: '0 auto', padding: '72px 48px 0' }}>
         <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ display: 'block', width: 24, height: 1, background: '#C0321A' }} />
           Om oss
         </div>
-        <h1 className="cg" style={{ fontSize: 'clamp(42px, 5.5vw, 70px)', fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.025em', lineHeight: .95, marginBottom: 28, maxWidth: 700 }}>
+        <h1 className="cg" style={{ fontSize: 'clamp(38px, 5.5vw, 70px)', fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.025em', lineHeight: .95, marginBottom: 28, maxWidth: 700 }}>
           Byggt av personer som arbetat med frågorna varje dag
         </h1>
         <p style={{ fontSize: 16, color: '#555', lineHeight: 1.9, maxWidth: 580, marginBottom: 72 }}>
@@ -38,16 +46,13 @@ export default function OmOss() {
         </p>
       </div>
 
-      {/* DIVIDER */}
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '0 48px' }}>
         <div style={{ height: 1, background: '#E0DDD6' }} />
       </div>
 
       {/* MAIN CONTENT */}
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '64px 48px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'start' }}>
-
-          {/* LEFT */}
+      <div className="page-pad" style={{ maxWidth: 900, margin: '0 auto', padding: '64px 48px' }}>
+        <div className="main-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'start' }}>
           <div>
             <div className="mono" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: '#999', marginBottom: 20 }}>Bakgrund</div>
             <h2 className="cg" style={{ fontSize: 38, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.015em', lineHeight: 1.05, marginBottom: 22 }}>
@@ -64,30 +69,13 @@ export default function OmOss() {
             </p>
           </div>
 
-          {/* RIGHT */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             <div className="mono" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: '#999', marginBottom: 4 }}>Det vi vet efter 15 år</div>
             {[
-              {
-                num: '01',
-                title: 'Rätt svar räcker inte',
-                desc: 'Det måste också gå att försvara. Klienter och revisorer vill se källan — inte bara slutsatsen.',
-              },
-              {
-                num: '02',
-                title: 'Frågorna återkommer',
-                desc: 'Representation, 3:12, bilförmån, moms på tjänster — samma frågor ställs om och om igen. De ska besvaras konsekvent varje gång.',
-              },
-              {
-                num: '03',
-                title: 'Regelverket förändras',
-                desc: 'Belopp, procentsatser och undantag ändras varje år. Det tar tid att hålla sig uppdaterad — tid som Normiq kan spara.',
-              },
-              {
-                num: '04',
-                title: 'Dokumentation är allt',
-                desc: 'Vid en granskning är det inte vad du visste som räknas, utan vad du kan visa. Normiq är byggt för spårbarhet.',
-              },
+              { num: '01', title: 'Rätt svar räcker inte', desc: 'Det måste också gå att försvara. Klienter och revisorer vill se källan — inte bara slutsatsen.' },
+              { num: '02', title: 'Frågorna återkommer', desc: 'Representation, 3:12, bilförmån, moms på tjänster — samma frågor ställs om och om igen. De ska besvaras konsekvent varje gång.' },
+              { num: '03', title: 'Regelverket förändras', desc: 'Belopp, procentsatser och undantag ändras varje år. Det tar tid att hålla sig uppdaterad — tid som Normiq kan spara.' },
+              { num: '04', title: 'Dokumentation är allt', desc: 'Vid en granskning är det inte vad du visste som räknas, utan vad du kan visa. Normiq är byggt för spårbarhet.' },
             ].map((item, i) => (
               <div key={i} style={{ background: 'white', border: '1px solid #E0DDD6', borderRadius: 6, padding: '22px 24px' }}>
                 <div className="mono" style={{ fontSize: 10, color: '#C0321A', letterSpacing: '.1em', marginBottom: 8 }}>{item.num}</div>
@@ -100,40 +88,66 @@ export default function OmOss() {
       </div>
 
       {/* DARK SECTION */}
-      <div style={{ background: '#0A0A0C', padding: '72px 48px', marginTop: 16 }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
-          <div>
-            <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ display: 'block', width: 24, height: 1, background: '#C0321A' }} />
-              Vår approach
-            </div>
-            <h2 className="cg" style={{ fontSize: 'clamp(30px, 3.5vw, 46px)', fontWeight: 600, color: 'white', letterSpacing: '-.02em', lineHeight: 1.05, marginBottom: 22 }}>
-              Vi ersätter inte expertisen. Vi gör den snabbare.
-            </h2>
-            <p style={{ fontSize: 15, color: '#666', lineHeight: 1.9 }}>
-              Normiq är ett beslutsstöd, inte ett beslut. Varje svar är en utgångspunkt för din bedömning — inte ett substitut för den. Det är en distinktion vi tar på allvar, och som genomsyrar hur verktyget är byggt.
-            </p>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {[
-              ['Källorna hittas', 'innan AI:n svarar'],
-              ['Riskklassning görs', 'mot regelverket'],
-              ['Svaret förklarar', 'vad lagen säger'],
-              ['Du fattar', 'det slutliga beslutet'],
-            ].map(([a, b], i, arr) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '18px 0', borderBottom: i < arr.length - 1 ? '1px solid #1a1a1c' : 'none' }}>
-                <span className="mono" style={{ fontSize: 11, color: '#C0321A', flexShrink: 0, width: 24 }}>{String(i + 1).padStart(2, '0')}</span>
-                <span style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#888' }}>
-                  <span style={{ color: 'white' }}>{a}</span> {b}
-                </span>
+      <div className="dark-sec" style={{ background: '#0A0A0C', padding: '72px 48px', marginTop: 16 }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
+          <div className="dark-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center', marginBottom: 64 }}>
+            <div>
+              <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ display: 'block', width: 24, height: 1, background: '#C0321A' }} />
+                Vår approach
               </div>
-            ))}
+              <h2 className="cg" style={{ fontSize: 'clamp(30px, 3.5vw, 46px)', fontWeight: 600, color: 'white', letterSpacing: '-.02em', lineHeight: 1.05, marginBottom: 22 }}>
+                Vi ersätter inte expertisen. Vi gör den snabbare.
+              </h2>
+              <p style={{ fontSize: 15, color: '#666', lineHeight: 1.9 }}>
+                Normiq är ett beslutsstöd, inte ett beslut. Varje svar är en utgångspunkt för din bedömning — inte ett substitut för den. Det är en distinktion vi tar på allvar, och som genomsyrar hur verktyget är byggt.
+              </p>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              {[
+                ['Källorna hittas', 'innan AI:n svarar'],
+                ['Riskklassning görs', 'mot regelverket'],
+                ['Svaret förklarar', 'vad lagen säger'],
+                ['Du fattar', 'det slutliga beslutet'],
+              ].map(([a, b], i, arr) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '18px 0', borderBottom: i < arr.length - 1 ? '1px solid #1a1a1c' : 'none' }}>
+                  <span className="mono" style={{ fontSize: 11, color: '#C0321A', flexShrink: 0, width: 24 }}>{String(i + 1).padStart(2, '0')}</span>
+                  <span style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#888' }}>
+                    <span style={{ color: 'white' }}>{a}</span> {b}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ANSVARSFRISKRIVNING */}
+          <div style={{ borderTop: '1px solid #1a1a1c', paddingTop: 48 }}>
+            <div className="mono" style={{ fontSize: 10, letterSpacing: '.14em', textTransform: 'uppercase', color: '#444', marginBottom: 20 }}>Ansvarsfriskrivning</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48 }} className="dark-grid">
+              <div>
+                <p style={{ fontSize: 14, color: '#555', lineHeight: 1.95, marginBottom: 16 }}>
+                  Normiq är ett informationsverktyg och utgör inte juridisk, skattemässig eller redovisningsmässig rådgivning. Informationen som tillhandahålls via Normiq är baserad på tillgängliga källtexter och ska ses som ett beslutsstöd — inte ett slutligt svar.
+                </p>
+                <p style={{ fontSize: 14, color: '#555', lineHeight: 1.95 }}>
+                  Skattelagstiftning och redovisningsregler förändras löpande. Normiq strävar efter att hålla sitt regelindex uppdaterat, men garanterar inte att informationen alltid återspeglar det senaste rättsläget.
+                </p>
+              </div>
+              <div>
+                <p style={{ fontSize: 14, color: '#555', lineHeight: 1.95, marginBottom: 16 }}>
+                  Normiq AB frånsäger sig ansvar för eventuella fel, brister eller förluster som uppstår till följd av användning av tjänsten. Användaren ansvarar själv för att verifiera information och inhämta professionell rådgivning innan beslut fattas.
+                </p>
+                <p style={{ fontSize: 14, color: '#555', lineHeight: 1.95 }}>
+                  Vid frågor om ansvar och villkor, kontakta oss på{' '}
+                  <a href="mailto:hej@normiq.se" style={{ color: '#C0321A' }}>hej@normiq.se</a>.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       {/* CTA */}
-      <div style={{ maxWidth: 900, margin: '0 auto', padding: '72px 48px', textAlign: 'center' }}>
+      <div className="page-pad" style={{ maxWidth: 900, margin: '0 auto', padding: '72px 48px', textAlign: 'center' }}>
         <h2 className="cg" style={{ fontSize: 'clamp(32px, 4vw, 52px)', fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.02em', marginBottom: 16, lineHeight: 1.05 }}>
           Redo att testa?
         </h2>
@@ -153,7 +167,7 @@ export default function OmOss() {
 
       {/* FOOTER */}
       <footer style={{ borderTop: '1px solid #1a1a1c', padding: '28px 48px', background: '#0A0A0C' }}>
-        <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+        <div className="footer-inner" style={{ maxWidth: 900, margin: '0 auto', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
           <span className="cg" style={{ fontSize: 22, fontWeight: 600, color: 'white' }}>normi<span style={{ color: '#C0321A' }}>q</span></span>
           <div className="mono" style={{ fontSize: 11, color: '#444', display: 'flex', gap: 24, flexWrap: 'wrap' }}>
             <a href="/landing" style={{ color: '#444', textDecoration: 'none' }}>Startsidan</a>
