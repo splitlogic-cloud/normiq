@@ -14,11 +14,9 @@ export async function POST(req: NextRequest) {
 
     const bytes = await file.arrayBuffer()
     const base64 = Buffer.from(bytes).toString('base64')
-
-    // Stöd för vanliga bildformat och PDF
     const mimeType = file.type || 'image/jpeg'
-    const isImage = mimeType.startsWith('image/')
     const isPdf = mimeType === 'application/pdf'
+    const isImage = mimeType.startsWith('image/')
 
     if (!isImage && !isPdf) {
       return NextResponse.json(
@@ -27,44 +25,64 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Bygg meddelandet till Claude Vision
-    const content: Anthropic.MessageParam['content'] = [
-      {
-        type: isPdf ? 'document' : 'image',
-        source: {
-          type: 'base64',
-          media_type: mimeType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif' | 'application/pdf',
-          data: base64,
-        },
-      } as Anthropic.ImageBlockParam | Anthropic.Base64PDFSource,
-      {
-        type: 'text',
-        text: `Analysera detta kvitto/faktura och extrahera följande information. Returnera ENDAST ett JSON-objekt, ingen annan text.
+    const extractPrompt = `Analysera detta kvitto/faktura och extrahera följande information. Returnera ENDAST ett JSON-objekt, ingen annan text.
 
 JSON-format:
 {
-  "description": "kort beskrivning av vad kvittot avser (t.ex. 'Restaurangbesök', 'Kontorsmaterial', 'Hotell')",
+  "description": "kort beskrivning på svenska av vad kvittot avser (t.ex. 'Restaurangbesök', 'Kontorsmaterial', 'Hotell')",
   "amount": totalt belopp som nummer (inkl. moms om moms finns),
   "vat_rate": momssats som nummer (0, 6, 12 eller 25),
   "vat_included": true,
   "date": "datum i format YYYY-MM-DD om det finns",
-  "vendor": "leverantörens namn om det finns",
-  "currency": "SEK" (eller annan valuta om det gäller)
+  "vendor": "leverantörens namn om det finns"
 }
 
 Regler:
-- amount ska vara det totala beloppet som kunden betalade
+- amount ska vara det totala beloppet kunden betalade
 - Om momssatsen inte syns tydligt, anta 25%
-- Om kvittot är på restaurang/café, anta 12% moms
-- description ska vara på svenska
-- Om du inte kan läsa kvittot tydligt, sätt confidence lågt`,
-      },
-    ]
+- Om kvittot är från restaurang/café, anta 12% moms
+- description ska vara på svenska`
+
+    // Bygg content-array beroende på filtyp
+    let messages: Anthropic.MessageParam[]
+
+    if (isPdf) {
+      messages = [{
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: base64,
+            },
+          },
+          { type: 'text', text: extractPrompt },
+        ],
+      }]
+    } else {
+      const imageMediaType = mimeType as 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif'
+      messages = [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: imageMediaType,
+              data: base64,
+            },
+          },
+          { type: 'text', text: extractPrompt },
+        ],
+      }]
+    }
 
     const response = await client.messages.create({
       model: 'claude-sonnet-4-5',
       max_tokens: 500,
-      messages: [{ role: 'user', content }],
+      messages,
     })
 
     const rawText = response.content
