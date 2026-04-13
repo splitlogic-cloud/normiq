@@ -1,764 +1,433 @@
 /**
- * Normiq — Källindexering
- * ========================
- * Kör: npx tsx scripts/index-sources.ts
- *
- * Indexerar:
- *   - Mervärdesskattelagen (ML) via Riksdagen API
- *   - Skatteförfarandelagen (SFL) via Riksdagen API
- *   - Bokföringslagen (BFL) via Riksdagen API
- *   - Skatteverkets ställningstaganden (SKV) via scraping
- *   - BFN vägledningar via scraping
- *
- * Kräver .env.local:
- *   OPENAI_API_KEY
- *   NEXT_PUBLIC_SUPABASE_URL
- *   SUPABASE_SERVICE_ROLE_KEY   ← service role (bypass RLS)
+ * Normiq — Förbättrad källindexering
+ * ====================================
+ * - Paragraf-aware chunkning (delar vid § istället för ordgräns)
+ * - Bättre metadata per chunk (kapitel, paragrafnummer, lagnamn)
+ * - Deduplikering via hash
+ * - Stöd för IL, ML, BFL, SFL, ABL + SKV-vägledningar
  */
 
 import OpenAI from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import * as dotenv from 'dotenv'
+import { createHash } from 'crypto'
 
 dotenv.config({ path: '.env.local' })
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
-
-// Använd service role key för att skriva utan RLS
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// ── CHUNK-INSTÄLLNINGAR ───────────────────────────────────────────────────
-const CHUNK_SIZE   = 400  // ord per chunk
-const CHUNK_OVERLAP = 80  // ord överlapp mellan chunks
-const BATCH_SIZE   = 5    // embeddings per API-anrop
-const DELAY_MS     = 300  // ms mellan batchar (rate limit)
+const BATCH_SIZE = 10
+const DELAY_MS   = 200
 
-// ── HJÄLPFUNKTIONER ───────────────────────────────────────────────────────
+// ── TYPER ─────────────────────────────────────────────────────────────────
 
-function sleep(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
-
-function log(msg: string) {
-  console.log(`[${new Date().toISOString().slice(11,19)}] ${msg}`)
-}
-
-/**
- * Chunkar text med överlapp så kontext inte tappas vid gränsen.
- */
-function chunkText(text: string, maxWords = CHUNK_SIZE, overlap = CHUNK_OVERLAP): string[] {
-  const words = text.split(/\s+/).filter(Boolean)
-  const chunks: string[] = []
-  let i = 0
-  while (i < words.length) {
-    const chunk = words.slice(i, i + maxWords).join(' ')
-    if (chunk.trim().length > 30) chunks.push(chunk.trim())
-    i += maxWords - overlap
-  }
-  return chunks
-}
-
-/**
- * Embeddar en batch av texter och returnerar vektorer.
- */
-async function embedBatch(texts: string[]): Promise<number[][]> {
-  const res = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
-    input: texts,
-  })
-  return res.data.map(d => d.embedding)
-}
-
-/**
- * Kontrollerar om ett lagrum redan finns indexerat.
- */
-async function alreadyIndexed(ref: string): Promise<boolean> {
-  const { count } = await supabase
-    .from('documents')
-    .select('*', { count: 'exact', head: true })
-    .eq('metadata->>ref', ref)
-  return (count ?? 0) > 0
-}
-
-/**
- * Sparar chunks i Supabase med embeddings.
- */
-async function indexChunks(
-  chunks: string[],
-  metadata: { ref: string; rubrik: string; lag: string }
-): Promise<number> {
-  let saved = 0
-  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
-    const batch = chunks.slice(i, i + BATCH_SIZE)
-    const embeddings = await embedBatch(batch)
-    const rows = batch.map((content, j) => ({
-      content,
-      metadata,
-      embedding: embeddings[j],
-    }))
-    const { error } = await supabase.from('documents').insert(rows)
-    if (error) {
-      console.error(`  ✗ Insert error: ${error.message}`)
-    } else {
-      saved += batch.length
-    }
-    await sleep(DELAY_MS)
-  }
-  return saved
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// RIKSDAGEN API — hämtar lagtext strukturerat
-// ══════════════════════════════════════════════════════════════════════════
-
-interface RiksdagenParagraf {
-  paragrafnummer: string
-  rubrik?: string
+interface Chunk {
+  ref: string
+  rubrik: string
+  lag: string
   text: string
+  kapitel?: string
+  paragraf?: string
 }
 
-/**
- * Hämtar en lag via Riksdagens öppna data API.
- * Returnerar paragrafer med ref, rubrik och text.
- */
-async function fetchLagFromRiksdagen(sfsNummer: string, lagnamn: string, kortnamn: string): Promise<RiksdagenParagraf[]> {
-  log(`Hämtar ${lagnamn} (${sfsNummer}) från Riksdagen...`)
+// ── HTML-RENSNING ─────────────────────────────────────────────────────────
 
-  // Riksdagen API endpoint för lagtext
-  const url = `https://data.riksdagen.se/dokumentlista/?dok_id=${encodeURIComponent(sfsNummer)}&utformat=json&a=s`
-
-  try {
-    const res = await fetch(url, {
-      headers: { 'Accept': 'application/json' }
-    })
-
-    if (!res.ok) {
-      log(`  ⚠ Riksdagen API svarade ${res.status} för ${sfsNummer}, försöker alternativ URL`)
-      return await fetchLagFallback(sfsNummer, lagnamn, kortnamn)
-    }
-
-    const data = await res.json()
-    const dokument = data?.dokumentlista?.dokument
-
-    if (!dokument || dokument.length === 0) {
-      log(`  ⚠ Inget dokument hittades för ${sfsNummer}`)
-      return await fetchLagFallback(sfsNummer, lagnamn, kortnamn)
-    }
-
-    const dok = Array.isArray(dokument) ? dokument[0] : dokument
-    const htmlUrl = `https://data.riksdagen.se/dokument/${dok.dok_id}.html`
-    const htmlRes = await fetch(htmlUrl)
-    const html = await htmlRes.text()
-
-    return parseRiksdagenHtml(html, lagnamn, kortnamn)
-  } catch (err) {
-    log(`  ✗ Fel vid hämtning: ${err}`)
-    return await fetchLagFallback(sfsNummer, lagnamn, kortnamn)
-  }
-}
-
-/**
- * Fallback: hämtar via lagrummet.se
- */
-async function fetchLagFallback(sfsNummer: string, lagnamn: string, kortnamn: string): Promise<RiksdagenParagraf[]> {
-  const slug = sfsNummer.replace(':', '-').replace('/', '-')
-  const url = `https://www.riksdagen.se/sv/dokument-och-lagar/dokument/svensk-forfattningssamling/${slug}/`
-
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Normiq/1.0 (normiq.se; indexing Swedish tax law for RAG)',
-        'Accept': 'text/html'
-      }
-    })
-    if (!res.ok) {
-      log(`  ✗ Fallback misslyckades (${res.status})`)
-      return []
-    }
-    const html = await res.text()
-    return parseRiksdagenHtml(html, lagnamn, kortnamn)
-  } catch {
-    return []
-  }
-}
-
-/**
- * Parsar HTML från Riksdagen och extraherar kapitel + paragrafer.
- */
-function parseRiksdagenHtml(html: string, lagnamn: string, kortnamn: string): RiksdagenParagraf[] {
-  const paragrafer: RiksdagenParagraf[] = []
-
-  // Ta bort script/style-taggar
-  const clean = html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+function stripHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<header[\s\S]*?<\/header>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&#\d+;/g, ' ')
-    .replace(/\s{3,}/g, '\n\n')
+    .replace(/\s+/g, ' ')
     .trim()
+}
 
-  // Dela upp på "X kap." eller "§" mönster
-  const lines = clean.split('\n').map(l => l.trim()).filter(l => l.length > 10)
+// ── PARAGRAF-AWARE CHUNKNING ──────────────────────────────────────────────
+// Delar lagtext vid §-tecken så varje chunk är en komplett paragraf
+// med omgivande kontext (kapitelrubrik + paragrafnummer)
 
-  let currentKap = ''
-  let currentRubrik = ''
-  let currentRef = ''
+function chunkByParagraph(text: string, kortnamn: string): Chunk[] {
+  const chunks: Chunk[] = []
+  const lines = text.split(/\n+/).map(l => l.trim()).filter(l => l.length > 5)
+
+  let currentKapitel = ''
+  let currentKapitelRubrik = ''
   let buffer = ''
-  let paragrafNum = 0
+  let currentParagraf = ''
+  let chunkCount = 0
 
-  for (const line of lines) {
-    // Kapitelrubrik: "1 kap. Inledande bestämmelser"
-    const kapMatch = line.match(/^(\d+)\s+kap\.\s+(.+)/)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    // Kapitelrubrik: "1 kap." eller "Kapitel 1"
+    const kapMatch = line.match(/^(\d+)\s+kap\.?\s*(.*)/i)
     if (kapMatch) {
-      if (buffer.trim() && currentRef) {
-        paragrafer.push({ paragrafnummer: currentRef, rubrik: currentRubrik, text: buffer.trim() })
-        buffer = ''
+      // Spara föregående buffer
+      if (buffer.trim().length > 80 && currentParagraf) {
+        chunks.push({
+          ref: `${kortnamn} ${currentKapitel} ${currentParagraf}`.trim(),
+          rubrik: currentKapitelRubrik || kortnamn,
+          lag: kortnamn,
+          kapitel: currentKapitel,
+          paragraf: currentParagraf,
+          text: `${currentKapitel} ${currentKapitelRubrik}\n\n${buffer.trim()}`,
+        })
+        chunkCount++
       }
-      currentKap = `${kortnamn} ${kapMatch[1]} kap.`
-      currentRubrik = kapMatch[2].replace(/[*_]+/g, '').trim()
+      currentKapitel = `${kapMatch[1]} kap.`
+      currentKapitelRubrik = kapMatch[2]?.replace(/[*_]+/g, '').trim() || ''
+      buffer = ''
+      currentParagraf = ''
       continue
     }
 
-    // Paragraf: "1 §" eller "§ 1"
+    // Paragrafstart: "1 §" eller "§ 1"
     const parMatch = line.match(/^(\d+)\s*§/) || line.match(/^§\s*(\d+)/)
     if (parMatch) {
-      if (buffer.trim() && currentRef) {
-        paragrafer.push({ paragrafnummer: currentRef, rubrik: currentRubrik, text: buffer.trim() })
-        buffer = ''
+      // Spara föregående paragraf som en chunk
+      if (buffer.trim().length > 80 && currentParagraf) {
+        chunks.push({
+          ref: `${kortnamn} ${currentKapitel} ${currentParagraf}`.trim().replace(/\s+/g, ' '),
+          rubrik: currentKapitelRubrik || kortnamn,
+          lag: kortnamn,
+          kapitel: currentKapitel,
+          paragraf: currentParagraf,
+          text: `[${kortnamn} ${currentKapitel} ${currentParagraf}] ${currentKapitelRubrik}\n\n${buffer.trim()}`,
+        })
+        chunkCount++
       }
-      paragrafNum++
-      const num = parMatch[1]
-      currentRef = currentKap ? `${currentKap} ${num} §` : `${kortnamn} ${num} §`
+      currentParagraf = `${parMatch[1]} §`
       buffer = line
       continue
     }
 
-    if (currentRef) buffer += ' ' + line
+    // Lägg till i buffer
+    if (currentParagraf) {
+      buffer += ' ' + line
+      // Om buffern blir för stor — dela den
+      if (buffer.length > 2000) {
+        chunks.push({
+          ref: `${kortnamn} ${currentKapitel} ${currentParagraf}`.trim().replace(/\s+/g, ' '),
+          rubrik: currentKapitelRubrik || kortnamn,
+          lag: kortnamn,
+          kapitel: currentKapitel,
+          paragraf: currentParagraf,
+          text: `[${kortnamn} ${currentKapitel} ${currentParagraf}] ${currentKapitelRubrik}\n\n${buffer.trim()}`,
+        })
+        chunkCount++
+        buffer = ''
+        currentParagraf = `${currentParagraf} (forts.)`
+      }
+    }
   }
 
-  if (buffer.trim() && currentRef) {
-    paragrafer.push({ paragrafnummer: currentRef, rubrik: currentRubrik, text: buffer.trim() })
+  // Sista buffern
+  if (buffer.trim().length > 80 && currentParagraf) {
+    chunks.push({
+      ref: `${kortnamn} ${currentKapitel} ${currentParagraf}`.trim().replace(/\s+/g, ' '),
+      rubrik: currentKapitelRubrik || kortnamn,
+      lag: kortnamn,
+      kapitel: currentKapitel,
+      paragraf: currentParagraf,
+      text: `[${kortnamn} ${currentKapitel} ${currentParagraf}] ${currentKapitelRubrik}\n\n${buffer.trim()}`,
+    })
   }
 
-  log(`  → Extraherade ${paragrafer.length} paragrafer`)
-  return paragrafer
+  // Om paragraf-parsing gav för få chunks — fall tillbaka på ord-chunkning
+  if (chunks.length < 5) {
+    return chunkByWords(text, kortnamn)
+  }
+
+  return chunks
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// SKV STÄLLNINGSTAGANDEN
-// ══════════════════════════════════════════════════════════════════════════
+// Fallback: ord-baserad chunkning för texter utan tydlig paragrafstruktur
+function chunkByWords(text: string, ref: string, rubrik = '', lag = ''): Chunk[] {
+  const CHUNK_SIZE = 500
+  const OVERLAP    = 80
+  const words = text.split(/\s+/).filter(Boolean)
+  const chunks: Chunk[] = []
 
-interface SkvDokument {
-  titel: string
-  dnr: string
-  text: string
-  url: string
+  for (let i = 0; i < words.length; i += CHUNK_SIZE - OVERLAP) {
+    const chunk = words.slice(i, i + CHUNK_SIZE).join(' ').trim()
+    if (chunk.length > 80) {
+      chunks.push({ ref, rubrik: rubrik || ref, lag: lag || ref, text: chunk })
+    }
+  }
+  return chunks
 }
 
-const SKV_STALNINGSTAGANDEN_URLS = [
-  // Inkomstskatt — näringsinkomst
-  'https://www.skatteverket.se/rattsinformation/stallningstaganden/2024/stallningstaganden2024.4.html',
-  'https://www.skatteverket.se/rattsinformation/stallningstaganden/2023/stallningstaganden2023.4.html',
-  'https://www.skatteverket.se/rattsinformation/stallningstaganden/2022/stallningstaganden2022.4.html',
-]
+// ── HÄMTA LAGTEXT ─────────────────────────────────────────────────────────
 
-const SKV_VAGLEDNING_URLS = [
-  'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/representation.4.html',
-  'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/traktamenteocharesersattning.4.html',
-  'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/moms.4.html',
-  'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/inventarierocharesersattning.4.html',
-  'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/foretaaetslagsochbolagsformer/aktiebolag/utdelningochloneriactiebolag.4.html',
-  'https://www.skatteverket.se/foretagochorganisationer/arbetsgivare/lonochersattning/personalfrmaner.4.html',
-  'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/bokforing.4.html',
-  'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/skatterochavdrag/avdragforhemmakontorocharbetsrum.4.html',
-  'https://www.skatteverket.se/foretagochorganisationer/drivaforetag/skatterochavdrag/momsprivatkostnad.4.html',
-]
-
-async function fetchSkvPage(url: string): Promise<string> {
+async function fetchLagtext(sfs: string): Promise<string> {
+  const url = `https://rkrattsbaser.gov.se/sfst?bet=${sfs}`
+  log(`  Hämtar ${url}...`)
   try {
     const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Normiq/1.0 (normiq.se; indexing Swedish tax guidance for RAG)',
-        'Accept': 'text/html,application/xhtml+xml',
-        'Accept-Language': 'sv-SE,sv;q=0.9',
-      }
+      headers: { 'User-Agent': 'Normiq/2.0 (normiq.se)' },
+      signal: AbortSignal.timeout(30000),
     })
-    if (!res.ok) return ''
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const html = await res.text()
-    return extractTextFromHtml(html)
-  } catch {
+    const text = stripHtml(html)
+    if (text.length < 500) throw new Error('För lite text')
+    log(`  ✓ ${text.length.toLocaleString()} tecken`)
+    return text
+  } catch (err) {
+    log(`  ✗ ${err}`)
     return ''
   }
 }
 
-function extractTextFromHtml(html: string): string {
-  return html
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-    .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
-    .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
-    .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#\d+;/g, ' ')
-    .replace(/\s{3,}/g, '\n\n')
-    .trim()
-}
-
-async function indexSkvVagledningar(): Promise<void> {
-  log('\n══ SKV Vägledningar ══')
-  let total = 0
-
-  for (const url of SKV_VAGLEDNING_URLS) {
-    const slug = url.split('/').filter(Boolean).pop() || url
-    const titel = slug.replace(/[.-]/g, ' ').replace(/4$/, '').trim()
-    log(`  Hämtar: ${titel}`)
-
-    const text = await fetchSkvPage(url)
-    if (!text || text.length < 200) {
-      log(`  ⚠ För lite innehåll, hoppar över`)
-      continue
-    }
-
-    const chunks = chunkText(text)
-    const ref = `SKV vägledning — ${titel}`
-
-    if (await alreadyIndexed(ref)) {
-      log(`  ↷ Redan indexerad`)
-      continue
-    }
-
-    const saved = await indexChunks(chunks, {
-      ref,
-      rubrik: titel,
-      lag: 'Skatteverkets vägledning',
+async function fetchUrl(url: string): Promise<string> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Normiq/2.0 (normiq.se)',
+        'Accept': 'text/html',
+        'Accept-Language': 'sv-SE,sv;q=0.9',
+      },
+      signal: AbortSignal.timeout(20000),
     })
-    log(`  ✓ ${saved} chunks sparade`)
-    total += saved
-    await sleep(500)
-  }
-
-  log(`SKV Vägledningar: ${total} chunks totalt`)
+    if (!res.ok) return ''
+    return stripHtml(await res.text())
+  } catch { return '' }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// BFN VÄGLEDNINGAR
-// ══════════════════════════════════════════════════════════════════════════
+// ── EMBEDDING + LAGRING ───────────────────────────────────────────────────
 
-const BFN_URLS = [
-  { url: 'https://www.bfn.se/vagledningar/k2-vagledning/', titel: 'K2 — Årsredovisning i mindre företag', ref: 'BFN K2 vägledning' },
-  { url: 'https://www.bfn.se/vagledningar/k3-vagledning/', titel: 'K3 — Årsredovisning och koncernredovisning', ref: 'BFN K3 vägledning' },
-  { url: 'https://www.bfn.se/vagledningar/k1-vagledning/', titel: 'K1 — Förenklat årsbokslut', ref: 'BFN K1 vägledning' },
-  { url: 'https://www.bfn.se/normgivning/bokforingsnamndens-allmanna-rad/', titel: 'BFN Allmänna råd', ref: 'BFN BFNAR allmänna råd' },
-]
+async function embedAndStore(chunks: Chunk[]): Promise<number> {
+  let saved = 0
 
-async function indexBfn(): Promise<void> {
-  log('\n══ BFN Vägledningar ══')
-  let total = 0
-
-  for (const { url, titel, ref } of BFN_URLS) {
-    log(`  Hämtar: ${titel}`)
-
-    if (await alreadyIndexed(ref)) {
-      log(`  ↷ Redan indexerad`)
-      continue
+  for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+    const batch = chunks.slice(i, i + BATCH_SIZE)
+    try {
+      const res = await openai.embeddings.create({
+        model: 'text-embedding-3-small',
+        input: batch.map(c => c.text),
+      })
+      const rows = batch.map((chunk, j) => ({
+        content: chunk.text,
+        metadata: {
+          ref:     chunk.ref,
+          rubrik:  chunk.rubrik,
+          lag:     chunk.lag,
+          kapitel: chunk.kapitel || '',
+          paragraf: chunk.paragraf || '',
+        },
+        embedding: res.data[j].embedding,
+      }))
+      const { error } = await supabase.from('documents').insert(rows)
+      if (error) log(`  ! Insert error: ${error.message}`)
+      else saved += batch.length
+    } catch (err) {
+      log(`  ! Embed error batch ${i}: ${err}`)
     }
-
-    const text = await fetchSkvPage(url)
-    if (!text || text.length < 200) {
-      log(`  ⚠ För lite innehåll`)
-      continue
-    }
-
-    const chunks = chunkText(text)
-    const saved = await indexChunks(chunks, { ref, rubrik: titel, lag: 'BFN normgivning' })
-    log(`  ✓ ${saved} chunks sparade`)
-    total += saved
-    await sleep(500)
+    await sleep(DELAY_MS)
+    process.stdout.write(`\r  ${i + batch.length}/${chunks.length} chunks...`)
   }
-
-  log(`BFN: ${total} chunks totalt`)
+  process.stdout.write('\n')
+  return saved
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// MERVÄRDESSKATTELAGEN (ML) — SFS 2023:200
-// ══════════════════════════════════════════════════════════════════════════
+// ── INDEXERA EN LAG ───────────────────────────────────────────────────────
 
-async function indexML(): Promise<void> {
-  log('\n══ Mervärdesskattelagen (ML) ══')
+async function indexLag(sfs: string, kortnamn: string, lagnamn: string): Promise<number> {
+  log(`\n── ${lagnamn} (${sfs}) ──`)
 
-  // Kolla om vi redan har tillräckligt
-  const { count } = await supabase
+  // Kolla om redan indexerad med samma hash
+  const text = await fetchLagtext(sfs)
+  if (!text) return 0
+
+  const hash = createHash('sha256').update(text.slice(0, 20000)).digest('hex').slice(0, 16)
+
+  const { data: existing } = await supabase
+    .from('source_versions')
+    .select('content_hash')
+    .eq('ref', kortnamn)
+    .single()
+
+  if (existing?.content_hash === hash) {
+    log(`  ↷ Oförändrad sedan senaste indexering`)
+    return 0
+  }
+
+  // Ta bort gamla chunks
+  const { error: delError } = await supabase
     .from('documents')
-    .select('*', { count: 'exact', head: true })
-    .eq('metadata->>lag', 'Mervärdesskattelagen')
+    .delete()
+    .eq('metadata->>lag', lagnamn)
+  if (delError) log(`  ! Delete error: ${delError.message}`)
 
-  if ((count ?? 0) > 100) {
-    log(`  ↷ ML redan indexerad (${count} chunks)`)
-    return
+  // Chunka paragraf-aware
+  const chunks = chunkByParagraph(text, kortnamn)
+  log(`  ${chunks.length} paragrafer extraherade`)
+
+  if (chunks.length === 0) {
+    log(`  ✗ Inga chunks — hoppar över`)
+    return 0
   }
 
-  // ML är strukturerad — vi indexerar de viktigaste kapitlen manuellt
-  // med välkänt innehåll för att säkerställa korrekthet
-  const mlKapitel = [
-    {
-      ref: 'ML 1 kap. 1 §',
-      rubrik: 'Mervärdesskatt — lagens tillämpningsområde',
-      lag: 'Mervärdesskattelagen',
-      text: 'Mervärdesskatt ska betalas till staten vid sådan omsättning inom landet av varor och tjänster som är skattepliktig och görs av en beskattningsbar person i denna egenskap, vid skattepliktig unionsintern förvärv av varor inom landet, vid skattepliktiga import av varor till landet.'
-    },
-    {
-      ref: 'ML 7 kap. 1 §',
-      rubrik: 'Skattesatser — normalskattesats 25 procent',
-      lag: 'Mervärdesskattelagen',
-      text: 'Skatten utgör 25 procent av beskattningsunderlaget om inte annat följer av 2 eller 3 §. Skatten utgör 12 procent av beskattningsunderlaget för: rumsuthyrning i hotellrörelse, livsmedel, restaurang- och cateringtjänster (mat och alkoholfri dryck). Skatten utgör 6 procent av beskattningsunderlaget för: böcker och tidskrifter, persontransporter, entré till kulturella evenemang.'
-    },
-    {
-      ref: 'ML 8 kap. 3 §',
-      rubrik: 'Avdragsrätt för ingående moms — huvudregel',
-      lag: 'Mervärdesskattelagen',
-      text: 'En beskattningsbar person får göra avdrag för ingående skatt som hänför sig till förvärv eller import i verksamheten, om omsättningen är skattepliktig eller ger rätt till återbetalning. Avdragsrätt förutsätter att förvärvet används i den skattepliktiga verksamheten. Blandad verksamhet (skattepliktig och skattefri) ger avdragsrätt i proportion till användningen i skattepliktig verksamhet.'
-    },
-    {
-      ref: 'ML 8 kap. 9 §',
-      rubrik: 'Representation — begränsad avdragsrätt',
-      lag: 'Mervärdesskattelagen',
-      text: 'Avdrag medges inte för ingående skatt vid stadigvarande bostad, representation och liknande ändamål. För representation medges avdrag för ingående skatt på utgifter för måltider och liknande med ett belopp som motsvarar skatten på ett underlag om 300 kronor per person och tillfälle. Avdraget beräknas på 25 procent moms: 300 × 25% = 75 kr (om representation avser alkohol och mat). Om bara mat (12%): 300 × 12/112 ≈ 32 kr. Skatteverkets schablon om maten och alkohol kombineras: 46 kr per person beräknat på 25% moms-underlag om max 300 kr.'
-    },
-    {
-      ref: 'ML 8 kap. 14 §',
-      rubrik: 'Personbilar — begränsad avdragsrätt',
-      lag: 'Mervärdesskattelagen',
-      text: 'Avdrag medges inte för ingående skatt som hänför sig till förvärv eller hyra av personbil eller motorcykel, om inte fordonet används uteslutande i skattepliktig yrkesmässig verksamhet som avser återförsäljning av fordon, persontransporter, körkortsutbildning eller uthyrning.'
-    },
-    {
-      ref: 'ML 9 kap.',
-      rubrik: 'Frivillig skattskyldighet — fastighetsuthyrning',
-      lag: 'Mervärdesskattelagen',
-      text: 'En fastighetsägare eller hyresgäst som hyr ut en fastighet eller del av fastighet för stadigvarande användning i skattepliktig verksamhet kan ansöka om frivillig skattskyldighet. Frivillig skattskyldighet ger rätt till avdrag för ingående skatt hänförlig till fastigheten men medför att utgående skatt ska tas ut på hyran.'
-    },
-    {
-      ref: 'ML 10 kap.',
-      rubrik: 'Återbetalning av mervärdesskatt',
-      lag: 'Mervärdesskattelagen',
-      text: 'Beskattningsbara personer som inte är skyldiga att betala mervärdesskatt i Sverige men som har ingående skatt i Sverige kan i vissa fall få återbetalning. Detta gäller bl.a. utländska företagare och verksamheter med enbart skattefri omsättning.'
-    },
-    {
-      ref: 'ML 11 kap.',
-      rubrik: 'Fakturering — krav och undantag',
-      lag: 'Mervärdesskattelagen',
-      text: 'En faktura ska innehålla: datum för utfärdande, löpnummer, säljarens registreringsnummer till mervärdesskatt, säljarens och köparens namn och adress, varornas eller tjänsternas mängd och art, datum för tillhandahållande, beskattningsunderlag och skattesats, skattebelopp. Förenklad faktura får användas om beloppet understiger 4 000 kr inkl. moms.'
-    },
-    {
-      ref: 'ML 13 kap.',
-      rubrik: 'Redovisning av mervärdesskatt — faktura- och bokslutsmetod',
-      lag: 'Mervärdesskattelagen',
-      text: 'Utgående och ingående skatt ska redovisas för den redovisningsperiod under vilken den beskattningsgrundande händelsen inträffade. Fakturametoden: redovisning när faktura utfärdas eller mottas. Bokslutsmetoden: redovisning när betalning sker (tillåten för företag med nettoomsättning under 3 miljoner kr).'
-    },
-  ]
+  // Sätt lag-namn på alla chunks
+  for (const c of chunks) { c.lag = lagnamn }
 
-  log(`  Indexerar ${mlKapitel.length} ML-avsnitt...`)
-  let total = 0
+  const saved = await embedAndStore(chunks)
+  log(`  ✓ ${saved} chunks sparade`)
 
-  for (const para of mlKapitel) {
-    if (await alreadyIndexed(para.ref)) {
-      log(`  ↷ ${para.ref} redan indexerad`)
-      continue
-    }
-    const chunks = chunkText(para.text)
-    const saved = await indexChunks(chunks, { ref: para.ref, rubrik: para.rubrik, lag: para.lag })
-    log(`  ✓ ${para.ref} — ${saved} chunks`)
-    total += saved
-  }
+  // Uppdatera version
+  await supabase.from('source_versions').upsert({
+    ref: kortnamn,
+    content_hash: hash,
+    url: `https://rkrattsbaser.gov.se/sfst?bet=${sfs}`,
+    updated_at: new Date().toISOString(),
+  })
 
-  // Försök också hämta fulltext från Riksdagen
-  const riksdagenParafer = await fetchLagFromRiksdagen('2023:200', 'Mervärdesskattelagen', 'ML')
-  for (const para of riksdagenParafer) {
-    if (para.text.length < 50) continue
-    if (await alreadyIndexed(para.paragrafnummer)) continue
-    const chunks = chunkText(para.text)
-    const saved = await indexChunks(chunks, {
-      ref: para.paragrafnummer,
-      rubrik: para.rubrik || 'Mervärdesskattelagen',
-      lag: 'Mervärdesskattelagen',
-    })
-    total += saved
-  }
-
-  log(`ML: ${total} chunks totalt`)
+  return saved
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// SKATTEFÖRFARANDELAGEN (SFL) — SFS 2011:1244
-// ══════════════════════════════════════════════════════════════════════════
+// ── INDEXERA SKV-SIDA ─────────────────────────────────────────────────────
 
-async function indexSFL(): Promise<void> {
-  log('\n══ Skatteförfarandelagen (SFL) ══')
+async function indexSkvSida(url: string, ref: string, rubrik: string): Promise<number> {
+  log(`\n── ${rubrik} ──`)
+  log(`  URL: ${url}`)
 
-  const { count } = await supabase
-    .from('documents')
-    .select('*', { count: 'exact', head: true })
-    .eq('metadata->>lag', 'Skatteförfarandelagen')
-
-  if ((count ?? 0) > 50) {
-    log(`  ↷ SFL redan indexerad (${count} chunks)`)
-    return
+  const text = await fetchUrl(url)
+  if (!text || text.length < 200) {
+    log(`  ✗ Ingen text hämtad`)
+    return 0
   }
 
-  const sflAvsnitt = [
-    {
-      ref: 'SFL 3 kap. 4 §',
-      rubrik: 'Skattedeklaration — skyldighet',
-      lag: 'Skatteförfarandelagen',
-      text: 'Den som är skyldig att göra skatteavdrag, betala arbetsgivaravgifter eller mervärdesskatt ska lämna skattedeklaration. Deklarationen ska lämnas för varje redovisningsperiod.',
-    },
-    {
-      ref: 'SFL 7 kap.',
-      rubrik: 'Preliminär skatt — F-skatt och A-skatt',
-      lag: 'Skatteförfarandelagen',
-      text: 'F-skatt betalas av den som bedriver eller kan antas bedriva näringsverksamhet. A-skatt betalas av anställda via arbetsgivarens skatteavdrag. Den som har F-skattsedel ansvarar själv för sin preliminärskatt och arbetsgivaravgifter. Kombinerad F- och A-skatt (FA-skatt) kan beviljas den som har både anställning och näringsverksamhet.',
-    },
-    {
-      ref: 'SFL 10 kap.',
-      rubrik: 'Skatteavdrag — skyldighet och undantag',
-      lag: 'Skatteförfarandelagen',
-      text: 'Arbetsgivare ska göra skatteavdrag på ersättning för arbete till den som är godkänd för F-skatt ska skatteavdrag inte göras. Skatteavdrag ska göras på kontant lön, förmåner och liknande ersättningar. Skattetabeller fastställs av Skatteverket och anger avdragets storlek baserat på inkomst och eventuell jämkning.',
-    },
-    {
-      ref: 'SFL 26 kap.',
-      rubrik: 'Arbetsgivardeklaration — redovisning per betalningsmottagare',
-      lag: 'Skatteförfarandelagen',
-      text: 'Arbetsgivare ska lämna arbetsgivardeklaration för varje kalendermånad. Från 2019 redovisas uppgifter per individ i arbetsgivardeklarationen (AGI). Deklarationen ska innehålla utbetald ersättning, gjorda skatteavdrag och underlag för arbetsgivaravgifter per anställd.',
-    },
-    {
-      ref: 'SFL 36 kap.',
-      rubrik: 'Inkomstskattedeklaration — skyldighet och tidpunkt',
-      lag: 'Skatteförfarandelagen',
-      text: 'Fysiska personer och dödsbon ska lämna inkomstdeklaration. Aktiebolag och ekonomiska föreningar ska lämna inkomstdeklaration. Deklaration lämnas senast 2 maj (fysiska personer) eller 1 juli (juridiska personer med räkenskapsår som slutar 31 december).',
-    },
-    {
-      ref: 'SFL 44 kap.',
-      rubrik: 'Omprövning — initiativ av den skattskyldige',
-      lag: 'Skatteförfarandelagen',
-      text: 'Den skattskyldige kan begära omprövning inom 6 år efter utgången av det beskattningsår beslutet avser. Skatteverket omprövar inom 2 månader om begäran avser rättelse av uppenbart fel.',
-    },
-    {
-      ref: 'SFL 49 kap.',
-      rubrik: 'Skattetillägg — förutsättningar och beräkning',
-      lag: 'Skatteförfarandelagen',
-      text: 'Skattetillägg tas ut när en oriktig uppgift lämnats på annat sätt än muntligen. Skattetillägg uppgår till 40 procent av undandragen skatt (inkomstskatt) eller 20 procent (mervärdesskatt). Befrielse kan medges vid ursäktliga fel, ringa belopp eller om det framstår som uppenbart oskäligt.',
-    },
-    {
-      ref: 'SFL 63 kap.',
-      rubrik: 'Anstånd med betalning av skatt',
-      lag: 'Skatteförfarandelagen',
-      text: 'Anstånd med betalning kan beviljas om det är tveksamt hur stor skatten är, om synnerliga skäl föreligger eller om en överklagan pågår. Anstånd beviljas normalt för den del av skatten som är tvistig.',
-    },
-  ]
+  const hash = createHash('sha256').update(text.slice(0, 10000)).digest('hex').slice(0, 16)
 
-  let total = 0
-  for (const avsnitt of sflAvsnitt) {
-    if (await alreadyIndexed(avsnitt.ref)) { log(`  ↷ ${avsnitt.ref}`); continue }
-    const chunks = chunkText(avsnitt.text)
-    const saved = await indexChunks(chunks, { ref: avsnitt.ref, rubrik: avsnitt.rubrik, lag: avsnitt.lag })
-    log(`  ✓ ${avsnitt.ref} — ${saved} chunks`)
-    total += saved
+  const { data: existing } = await supabase
+    .from('source_versions')
+    .select('content_hash')
+    .eq('ref', ref)
+    .single()
+
+  if (existing?.content_hash === hash) {
+    log(`  ↷ Oförändrad`)
+    return 0
   }
 
-  // Försök fulltext från Riksdagen
-  const riksdagenParafer = await fetchLagFromRiksdagen('2011:1244', 'Skatteförfarandelagen', 'SFL')
-  for (const para of riksdagenParafer) {
-    if (para.text.length < 50 || await alreadyIndexed(para.paragrafnummer)) continue
-    const chunks = chunkText(para.text)
-    const saved = await indexChunks(chunks, { ref: para.paragrafnummer, rubrik: para.rubrik || 'SFL', lag: 'Skatteförfarandelagen' })
-    total += saved
-  }
+  // Ta bort gamla
+  await supabase.from('documents').delete().eq('metadata->>ref', ref)
 
-  log(`SFL: ${total} chunks totalt`)
+  const chunks = chunkByWords(text, ref, rubrik, 'Skatteverkets vägledning')
+  log(`  ${chunks.length} chunks`)
+
+  const saved = await embedAndStore(chunks)
+  log(`  ✓ ${saved} chunks sparade`)
+
+  await supabase.from('source_versions').upsert({
+    ref,
+    content_hash: hash,
+    url,
+    updated_at: new Date().toISOString(),
+  })
+
+  return saved
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// BOKFÖRINGSLAGEN (BFL) — SFS 1999:1078
-// ══════════════════════════════════════════════════════════════════════════
+// ── LOGGING ───────────────────────────────────────────────────────────────
 
-async function indexBFL(): Promise<void> {
-  log('\n══ Bokföringslagen (BFL) ══')
-
-  const { count } = await supabase
-    .from('documents')
-    .select('*', { count: 'exact', head: true })
-    .eq('metadata->>lag', 'Bokföringslagen')
-
-  if ((count ?? 0) > 50) {
-    log(`  ↷ BFL redan indexerad (${count} chunks)`)
-    return
-  }
-
-  const bflAvsnitt = [
-    {
-      ref: 'BFL 1 kap. 2 §',
-      rubrik: 'Bokföringsskyldighet — vilka är skyldiga',
-      lag: 'Bokföringslagen',
-      text: 'Bokföringsskyldiga är: aktiebolag, handelsbolag, ekonomiska föreningar, stiftelser, och fysiska personer som bedriver näringsverksamhet om nettoomsättningen normalt överstiger 3 miljoner kronor. Bokföringsskyldigheten innebär att löpande bokföra affärshändelser och upprätta ett bokslut.',
-    },
-    {
-      ref: 'BFL 4 kap.',
-      rubrik: 'Löpande bokföring — grundbokföring och huvudbokföring',
-      lag: 'Bokföringslagen',
-      text: 'Affärshändelser ska bokföras så att de kan presenteras i registreringsordning (grundbok) och i systematisk ordning (huvudbok). Kontanta in- och utbetalningar ska bokföras senast påföljande arbetsdag. Övriga affärshändelser ska bokföras så snart det kan ske. Verifikationer ska vara numrerade och innehålla datum, belopp och motpart.',
-    },
-    {
-      ref: 'BFL 5 kap.',
-      rubrik: 'Verifikationer — krav på underlag',
-      lag: 'Bokföringslagen',
-      text: 'Varje affärshändelse ska dokumenteras med en verifikation. Verifikationen ska innehålla uppgift om när den sammanställts, när affärshändelsen inträffat, vad den avser, belopp och vilken motpart den berör. Verifikationer ska vara autentiska och kontrollerbara.',
-    },
-    {
-      ref: 'BFL 6 kap.',
-      rubrik: 'Räkenskapsår och bokslut',
-      lag: 'Bokföringslagen',
-      text: 'Räkenskapsåret ska vara 12 månader. Brutet räkenskapsår kan vara 1 feb–31 jan, 1 maj–30 apr eller 1 sep–31 aug. Bokföringsskyldiga ska avsluta den löpande bokföringen med ett bokslut. Aktiebolag och ekonomiska föreningar ska upprätta årsredovisning.',
-    },
-    {
-      ref: 'BFL 7 kap.',
-      rubrik: 'Arkivering — bevarandetid för räkenskapsinformation',
-      lag: 'Bokföringslagen',
-      text: 'Räkenskapsinformation ska bevaras i 7 år efter räkenskapsårets utgång. Räkenskapsinformation innefattar: systemdokumentation, verifikationer, bokföringsposter, sidoordnad bokföring, huvudbokföring, specifikationer och sammanställningar. Informationen kan bevaras i elektronisk form om den kan läsas ut under hela arkiveringstiden.',
-    },
-    {
-      ref: 'BFL 6 kap. 1 §',
-      rubrik: 'Kontantmetoden och faktureringsmetoden',
-      lag: 'Bokföringslagen',
-      text: 'Affärshändelser får bokföras kontant (kontantmetoden) — dvs. vid betalning — om nettoomsättningen understiger 3 miljoner kronor. Faktureringsmetoden innebär att affärshändelser bokförs när faktura utfärdas eller mottas, oavsett betalning. Vid räkenskapsårets utgång ska samtliga obetalda fordringar och skulder bokföras oavsett metod.',
-    },
-  ]
-
-  let total = 0
-  for (const avsnitt of bflAvsnitt) {
-    if (await alreadyIndexed(avsnitt.ref)) { log(`  ↷ ${avsnitt.ref}`); continue }
-    const chunks = chunkText(avsnitt.text)
-    const saved = await indexChunks(chunks, { ref: avsnitt.ref, rubrik: avsnitt.rubrik, lag: avsnitt.lag })
-    log(`  ✓ ${avsnitt.ref} — ${saved} chunks`)
-    total += saved
-  }
-
-  // Försök fulltext
-  const riksdagenParafer = await fetchLagFromRiksdagen('1999:1078', 'Bokföringslagen', 'BFL')
-  for (const para of riksdagenParafer) {
-    if (para.text.length < 50 || await alreadyIndexed(para.paragrafnummer)) continue
-    const chunks = chunkText(para.text)
-    const saved = await indexChunks(chunks, { ref: para.paragrafnummer, rubrik: para.rubrik || 'BFL', lag: 'Bokföringslagen' })
-    total += saved
-  }
-
-  log(`BFL: ${total} chunks totalt`)
+function log(msg: string) {
+  console.log(`[${new Date().toISOString().slice(11, 19)}] ${msg}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// ABL (Aktiebolagslagen) — för utdelning och fåmansbolag
-// ══════════════════════════════════════════════════════════════════════════
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
-async function indexABL(): Promise<void> {
-  log('\n══ Aktiebolagslagen (ABL) — utdelning & fåmansbolag ══')
+// ── SAMMANFATTNING ────────────────────────────────────────────────────────
 
-  const ablAvsnitt = [
-    {
-      ref: 'ABL 17 kap. 1 §',
-      rubrik: 'Utdelning — förutsättningar och beloppsgräns',
-      lag: 'Aktiebolagslagen',
-      text: 'Bolagsstämman beslutar om utdelning till aktieägarna. Utdelning får endast ske om det efter utdelningen finns full täckning för bolagets bundna egna kapital. Utdelning kräver att årsredovisning upprättats och att revisorsyttrande finns (om bolaget har revisor). Utdelning beslutas normalt i samband med ordinarie bolagsstämma.',
-    },
-    {
-      ref: 'ABL 18 kap.',
-      rubrik: 'Värdeöverföringar — försiktighetsregeln',
-      lag: 'Aktiebolagslagen',
-      text: 'Värdeöverföring från bolaget (utdelning, koncernbidrag, återköp av aktier m.m.) får bara ske om den framstår som försvarlig med hänsyn till de krav som verksamhetens art, omfattning och risker ställer på storleken av det egna kapitalet, och bolagets konsolideringsbehov, likviditet och ställning i övrigt. Försiktighetsregeln är en begränsning utöver beloppsspärren.',
-    },
-    {
-      ref: 'ABL 20 kap.',
-      rubrik: 'Nedsättning av aktiekapital',
-      lag: 'Aktiebolagslagen',
-      text: 'Aktiekapitalet kan sättas ned för återbetalning till aktieägarna, täckning av förlust eller avsättning till fri fond. Nedsättning för återbetalning kräver tillstånd av Bolagsverket eller domstol om det bundna egna kapitalet minskar.',
-    },
-  ]
-
-  let total = 0
-  for (const avsnitt of ablAvsnitt) {
-    if (await alreadyIndexed(avsnitt.ref)) { log(`  ↷ ${avsnitt.ref}`); continue }
-    const chunks = chunkText(avsnitt.text)
-    const saved = await indexChunks(chunks, { ref: avsnitt.ref, rubrik: avsnitt.rubrik, lag: avsnitt.lag })
-    log(`  ✓ ${avsnitt.ref} — ${saved} chunks`)
-    total += saved
-  }
-
-  log(`ABL: ${total} chunks totalt`)
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// SAMMANFATTNING
-// ══════════════════════════════════════════════════════════════════════════
-
-async function printSummary(): Promise<void> {
-  log('\n══ SAMMANFATTNING ══')
-  const { data } = await supabase
-    .from('documents')
-    .select('metadata')
-
+async function printSummary() {
+  const { data } = await supabase.from('documents').select('metadata')
   if (!data) return
-
   const counts: Record<string, number> = {}
   for (const row of data) {
     const lag = (row.metadata as { lag?: string })?.lag || 'Okänd'
     counts[lag] = (counts[lag] || 0) + 1
   }
-
   const total = Object.values(counts).reduce((a, b) => a + b, 0)
-  console.log('\nChunks per källa:')
+  console.log('\n── Chunks per källa ──')
   for (const [lag, count] of Object.entries(counts).sort((a, b) => b[1] - a[1])) {
     console.log(`  ${lag.padEnd(35)} ${count}`)
   }
-  console.log(`${''.padEnd(35, '─')}`)
-  console.log(`  ${'Totalt'.padEnd(34)} ${total}`)
+  console.log(`  ${'Totalt'.padEnd(35)} ${total}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// MAIN
-// ══════════════════════════════════════════════════════════════════════════
+// ── MAIN ──────────────────────────────────────────────────────────────────
+
+const LAGAR = [
+  { sfs: '1999:1229', kortnamn: 'IL',  lagnamn: 'Inkomstskattelagen' },
+  { sfs: '2023:200',  kortnamn: 'ML',  lagnamn: 'Mervärdesskattelagen' },
+  { sfs: '2011:1244', kortnamn: 'SFL', lagnamn: 'Skatteförfarandelagen' },
+  { sfs: '1999:1078', kortnamn: 'BFL', lagnamn: 'Bokföringslagen' },
+  { sfs: '2005:551',  kortnamn: 'ABL', lagnamn: 'Aktiebolagslagen' },
+]
+
+const SKV_SIDOR = [
+  { url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1508.html', ref: 'SKV-representation',   rubrik: 'Representation' },
+  { url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1600.html', ref: 'SKV-traktamente',      rubrik: 'Traktamente' },
+  { url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1400.html', ref: 'SKV-personalformaner', rubrik: 'Personalförmåner' },
+  { url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/3300.html', ref: 'SKV-utdelning-3-12',   rubrik: 'Utdelning fåmansföretag 3:12' },
+  { url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/1100.html', ref: 'SKV-avdrag',           rubrik: 'Avdrag i näringsverksamhet' },
+  { url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/2940.html', ref: 'SKV-moms-allmant',     rubrik: 'Moms — allmänt' },
+  { url: 'https://www4.skatteverket.se/rattsligvagledning/edition/2026.1/2941.html', ref: 'SKV-momssatser',       rubrik: 'Momssatser' },
+]
 
 async function main() {
-  console.log('╔══════════════════════════════════════╗')
-  console.log('║   Normiq — Källindexering v2.0       ║')
-  console.log('╚══════════════════════════════════════╝\n')
+  console.log('╔══════════════════════════════════════════╗')
+  console.log('║   Normiq — Källindexering v3.0           ║')
+  console.log('║   Paragraf-aware chunkning               ║')
+  console.log('╚══════════════════════════════════════════╝\n')
 
-  // Kontrollera env-variabler
-  if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY saknas i .env.local')
+  if (!process.env.OPENAI_API_KEY)          throw new Error('OPENAI_API_KEY saknas')
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) throw new Error('NEXT_PUBLIC_SUPABASE_URL saknas')
 
   const args = process.argv.slice(2)
   const only = args.find(a => a.startsWith('--only='))?.split('=')[1]
+  const force = args.includes('--force')
 
-  if (!only || only === 'ml')  await indexML()
-  if (!only || only === 'sfl') await indexSFL()
-  if (!only || only === 'bfl') await indexBFL()
-  if (!only || only === 'abl') await indexABL()
-  if (!only || only === 'skv') await indexSkvVagledningar()
-  if (!only || only === 'bfn') await indexBfn()
+  // Rensa allt om --force
+  if (force) {
+    log('--force: rensar documents och source_versions...')
+    await supabase.from('documents').delete().neq('id', '00000000-0000-0000-0000-000000000000')
+    await supabase.from('source_versions').delete().neq('ref', '__dummy__')
+  }
+
+  let total = 0
+
+  for (const lag of LAGAR) {
+    if (only && only !== lag.kortnamn.toLowerCase()) continue
+    const n = await indexLag(lag.sfs, lag.kortnamn, lag.lagnamn)
+    total += n
+    await sleep(2000)
+  }
+
+  if (!only || only === 'skv') {
+    for (const sida of SKV_SIDOR) {
+      const n = await indexSkvSida(sida.url, sida.ref, sida.rubrik)
+      total += n
+      await sleep(1000)
+    }
+  }
 
   await printSummary()
-  log('\n✓ Indexering klar!')
+  log(`\n✓ Klar — ${total} nya chunks indexerade`)
 }
 
 main().catch(err => {
-  console.error('✗ Fel:', err)
+  console.error('✗ Kritiskt fel:', err)
   process.exit(1)
 })
