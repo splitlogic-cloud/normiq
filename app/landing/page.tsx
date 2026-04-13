@@ -11,6 +11,7 @@ export default function Landing() {
     { q: 'Ersätter Normiq en skattejurist?', a: 'Nej. Normiq är ett beslutsstöd som hjälper dig att hitta relevanta källor snabbare. Slutlig bedömning görs alltid av användaren. Normiq är byggt för att underlätta research och dokumentation — inte för att ersätta professionellt omdöme.' },
     { q: 'Vilka källor bygger Normiq på?', a: 'Normiq använder strukturerade regelkällor som lagtext (IL, ML, BFL, SFL, ABL), Skatteverkets vägledningar och normgivning från BFN. Källorna uppdateras löpande.' },
     { q: 'Hur skiljer sig Normiq från generell AI?', a: 'Generella AI-verktyg försöker formulera ett svar som låter rätt. Normiq hittar först relevanta källor, verifierar mot dem, och förklarar sedan vad de faktiskt säger. AI:n skriver inte svaren fritt — den förklarar källorna.' },
+    { q: 'Kan jag använda Normiq i ett byråteam?', a: 'Ja. Kontakta oss på hej@normiq.se så sätter vi upp ett team.' },
     { q: 'Vad händer med mina frågor och svar?', a: 'Frågor och svar loggas för spårbarhet i ditt arbetsflöde. Din data används inte för att träna externa AI-modeller.' },
     { q: 'Kan jag avsluta när som helst?', a: 'Ja. Ingen bindningstid. Du kan avsluta prenumerationen när som helst direkt i ditt konto.' },
   ]
@@ -67,36 +68,34 @@ export default function Landing() {
         .a3 { animation: fadeUp .65s .24s both; }
         .a4 { animation: fadeUp .65s .36s both; }
         .a5 { animation: fadeUp .65s .48s both; }
+        .nav-mobile-btn { display: none; }
 
-        /* ── MOBILE ── */
+        /* ── MOBILE ─────────────────────────────────────────── */
         @media (max-width: 900px) {
           .nav-desktop { display: none !important; }
           .nav-mobile-btn { display: flex !important; }
           .hero-grid { grid-template-columns: 1fr !important; gap: 40px !important; padding: 56px 24px 48px !important; }
-          .hero-mock { justify-content: stretch !important; }
           .mock-wrap { max-width: 100% !important; }
-          .section-pad { padding: 64px 24px !important; }
+          .sec { padding: 64px 24px !important; }
+          .sec-inner { padding: 64px 24px !important; }
           .problem-grid { grid-template-columns: 1fr !important; gap: 40px !important; }
-          .feature-grid { grid-template-columns: 1fr 1fr !important; gap: 10px !important; }
           .example-grid { grid-template-columns: 1fr !important; }
-          .flow-wrap { flex-direction: column !important; }
-          .flow-arrow { margin: -4px 0 !important; padding: 0 !important; transform: rotate(90deg) !important; align-self: center !important; }
+          .feature-grid { grid-template-columns: 1fr 1fr !important; }
+          .flow-wrap { flex-direction: column !important; overflow-x: visible !important; }
+          .flow-arrow { margin: 0 auto !important; padding: 4px 0 !important; transform: rotate(90deg) !important; }
           .flow-box { min-width: unset !important; width: 100% !important; }
           .roadmap-grid { grid-template-columns: 1fr !important; gap: 2px !important; }
           .taxbrain-grid { grid-template-columns: 1fr !important; gap: 48px !important; }
           .source-strip { flex-wrap: wrap !important; gap: 10px !important; padding: 20px 24px !important; }
           .footer-inner { flex-direction: column !important; gap: 16px !important; align-items: flex-start !important; }
           .footer-links { flex-wrap: wrap !important; gap: 16px !important; }
-          .price-section-inner { padding: 64px 24px !important; }
-          .faq-section { padding: 64px 24px !important; }
-          .cta-section { padding: 72px 24px !important; }
+          .price-toggle-row { flex-direction: column !important; align-items: flex-start !important; gap: 16px !important; }
         }
         @media (max-width: 600px) {
           .feature-grid { grid-template-columns: 1fr !important; }
-          .hero-tags { flex-direction: column !important; gap: 8px !important; }
           .mock-body { font-size: 13px !important; }
+          .hero-tags { flex-wrap: wrap !important; gap: 8px !important; }
         }
-        .nav-mobile-btn { display: none; }
       `}</style>
 
       {/* NAV */}
@@ -108,7 +107,6 @@ export default function Landing() {
             </span>
           </a>
           <div style={{ flex: 1 }} />
-          {/* Desktop nav */}
           <div className="nav-desktop" style={{ display: 'flex', alignItems: 'center', gap: 32 }}>
             <a href="#hur-det-fungerar" className="nav-link">Hur det fungerar</a>
             <a href="#funktioner" className="nav-link">Funktioner</a>
@@ -117,18 +115,13 @@ export default function Landing() {
             <a href="/login" className="nav-link">Logga in</a>
             <a href="/register" className="btn-primary" style={{ padding: '10px 20px' }}>Testa gratis</a>
           </div>
-          {/* Mobile hamburger */}
           <button className="nav-mobile-btn" onClick={() => setMobileMenuOpen(v => !v)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: '#0A0A0C' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              {mobileMenuOpen
-                ? <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>
-                : <><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></>
-              }
+              {mobileMenuOpen ? <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></> : <><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></>}
             </svg>
           </button>
         </div>
-        {/* Mobile menu */}
         {mobileMenuOpen && (
           <div style={{ background: 'white', borderTop: '1px solid #E0DDD6', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             {[['#hur-det-fungerar','Hur det fungerar'],['#funktioner','Funktioner'],['#priser','Priser'],['#faq','FAQ'],['/login','Logga in']].map(([href, label]) => (
@@ -143,7 +136,7 @@ export default function Landing() {
       <section className="hero-grid" style={{ maxWidth: 1100, margin: '0 auto', padding: '96px 48px 80px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 64, alignItems: 'center' }}>
         <div>
           <div className="label a1">Söksystem för svenska skatte- och redovisningsregler</div>
-          <h1 className="cg a2" style={{ fontSize: 'clamp(40px, 5.5vw, 78px)', lineHeight: .93, letterSpacing: '-.03em', color: '#0A0A0C', marginBottom: 26 }}>
+          <h1 className="cg a2" style={{ fontSize: 'clamp(44px, 5.5vw, 78px)', lineHeight: .93, letterSpacing: '-.03em', color: '#0A0A0C', marginBottom: 26 }}>
             AI:n skriver inte svaren.{' '}
             <em style={{ color: '#C0321A', fontStyle: 'italic' }}>AI:n förklarar källorna.</em>
           </h1>
@@ -155,7 +148,7 @@ export default function Landing() {
           </p>
           <div className="a4" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 40 }}>
             <a href="/register" className="btn-primary">
-              Testa gratis — 14 dagar
+              Testa gratis
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
             </a>
           </div>
@@ -167,7 +160,7 @@ export default function Landing() {
             <span>✓ IL · ML · BFL · SFL</span>
           </div>
         </div>
-        <div className="a5 hero-mock" style={{ display: 'flex', justifyContent: 'center' }}>
+        <div className="a5" style={{ display: 'flex', justifyContent: 'center' }}>
           <div className="mock-wrap">
             <div className="mock-topbar">
               <div className="mock-dot" style={{ background: '#E8C8C0' }} />
@@ -181,7 +174,7 @@ export default function Landing() {
               </div>
               <div className="mock-assistant">
                 <div className="mock-body">
-                  Ja, om datorn används i verksamheten är den avdragsgill som inventarie enligt <span className="mock-ref">IL 16:1</span>. Kostnaden kan dras av direkt om den understiger 29 600 kr (0,5 gånger prisbasbeloppet 2026), annars skrivs den av över 3–5 år enligt <span className="mock-ref">IL 18:4</span>.
+                  Ja, om datorn används i verksamheten är den avdragsgill som inventarie enligt <span className="mock-ref">IL 16:1</span>. Kostnaden kan dras av direkt om den understiger 29 600 kr (0,5 gånger prisbasbeloppet 2026), annars skrivs den av över 3 till 5 år enligt <span className="mock-ref">IL 18:4</span>.
                   <div style={{ marginTop: 12, padding: '12px 0 0', borderTop: '1px solid #F0EDE6' }}>
                     <div className="mono" style={{ fontSize: 12, color: '#555', lineHeight: 1.8 }}>
                       <strong style={{ color: '#0A0A0C' }}>Enkelt uttryckt:</strong> Köper du en dator för jobbet betalar bolaget — inte du privat. Spara kvittot och notera att den används i verksamheten.
@@ -217,37 +210,27 @@ export default function Landing() {
       </section>
 
       {/* PROBLEM */}
-      <section className="section-pad" style={{ padding: '88px 48px', maxWidth: 1100, margin: '0 auto' }}>
+      <section className="sec" style={{ padding: '88px 48px', maxWidth: 1100, margin: '0 auto' }}>
         <div className="problem-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
           <div>
             <div className="label">Problemet</div>
-            <h2 className="cg" style={{ fontSize: 'clamp(28px, 3.5vw, 48px)', color: '#0A0A0C', marginBottom: 22, letterSpacing: '-.02em', lineHeight: 1.08 }}>
+            <h2 className="cg" style={{ fontSize: 'clamp(30px, 3.5vw, 48px)', color: '#0A0A0C', marginBottom: 22, letterSpacing: '-.02em', lineHeight: 1.08 }}>
               När svaret måste gå att försvara räcker det inte att det låter rätt
             </h2>
             <p style={{ fontSize: 15, color: '#555', lineHeight: 1.9, marginBottom: 16 }}>
               Generella AI-verktyg formulerar svar som låter övertygande — men du kan inte se vad de bygger på. I skatte- och redovisningsfrågor är det ett problem.
             </p>
-            <p style={{ fontSize: 15, color: '#999', lineHeight: 1.9 }}>
-              Normiq visar källan innan det visar svaret.
-            </p>
+            <p style={{ fontSize: 15, color: '#999', lineHeight: 1.9 }}>Normiq visar källan innan det visar svaret.</p>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[
-              'Formulerar ett svar som låter rätt — utan källhänvisning.',
-              'Du kan inte se om svaret bygger på lagtext eller träningsdata.',
-              'Ingen riskbedömning — alla svar presenteras med samma säkerhet.',
-            ].map((text, i) => (
+            {['Formulerar ett svar som låter rätt — utan källhänvisning.','Du kan inte se om svaret bygger på lagtext eller träningsdata.','Ingen riskbedömning — alla svar presenteras med samma säkerhet.'].map((text, i) => (
               <div key={i} className="check-row" style={{ background: 'white', border: '1px solid #E0DDD6' }}>
                 <span style={{ color: '#C0321A', flexShrink: 0, fontFamily: 'DM Mono, monospace', fontSize: 13 }}>✕</span>
                 <span style={{ fontSize: 14, color: '#555', lineHeight: 1.7 }}>{text}</span>
               </div>
             ))}
             <div style={{ height: 4 }} />
-            {[
-              'Normiq visar vilket lagrum svaret bygger på.',
-              'Riskklassning görs mot källorna — innan AI:n svarar.',
-              'Klicka direkt till originaltexten och verifiera själv.',
-            ].map((text, i) => (
+            {['Normiq visar vilket lagrum svaret bygger på.','Riskklassning görs mot källorna — innan AI:n svarar.','Klicka direkt till originaltexten och verifiera själv.'].map((text, i) => (
               <div key={i} className="check-row" style={{ background: '#F0F7F3', border: '1px solid #D4EBE0' }}>
                 <span style={{ color: '#3A7A52', flexShrink: 0, fontFamily: 'DM Mono, monospace', fontSize: 13 }}>✓</span>
                 <span style={{ fontSize: 14, color: '#333', lineHeight: 1.7 }}>{text}</span>
@@ -257,11 +240,50 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* EXEMPEL */}
+      <section style={{ background: '#0A0A0C', padding: '88px 48px' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div className="label" style={{ color: '#C0321A' }}>
+            <span style={{ background: '#C0321A', width: 24, height: 1, display: 'block' }} />
+            Så här ser ett svar ut
+          </div>
+          <h2 className="cg" style={{ fontSize: 'clamp(30px, 3.5vw, 48px)', color: 'white', marginBottom: 48, letterSpacing: '-.02em' }}>
+            Varje svar innehåller lagrum, förklaring och riskbedömning
+          </h2>
+          <div className="example-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+            {[
+              { q: 'Hur mycket lågbeskattad utdelning kan jag ta enligt 3:12?', a: 'Utdelning upp till gränsbeloppet beskattas med 20% i kapital. Gränsbeloppet 2026 består av: (1) Grundbelopp 4 IBB = 322 400 kr. (2) Lönebaserat utrymme: 50% av löner över 8 IBB (644 800 kr). (3) Sparat utdelningsutrymme från tidigare år.', simplified: 'Du kan ta ut lågbeskattad utdelning (20%) upp till ditt gränsbelopp. Grundbeloppet är 322 400 kr 2026 — det får alla kvalificerade ägare. Har bolaget höga löner kan du lägga till 50% av löner som överstiger 644 800 kr.', sources: 'IL 57:11 · IL 57:19 · IL 57:20', risk: 'HÖG', riskColor: '#A02818' },
+              { q: 'Vad gäller för representation avseende moms?', a: 'Momsavdrag för representation medges på underlag om högst 300 kr exkl. moms per person. Enbart mat (12% moms): max 36 kr/person. Mat och alkohol — schablon: 46 kr/person om kostnad överstiger 300 kr exkl. moms.', simplified: 'Du kan välja mellan två metoder när måltiden innehåller både mat och alkohol. Antingen schablonen (46 kr/person) om notan överstiger 300 kr exkl. moms — eller proportionering utifrån faktiska kostnader.', sources: 'ML 8:9 · SKV A 2025:2', risk: 'MEDEL', riskColor: '#7A6010' },
+            ].map((ex, i) => (
+              <div key={i} style={{ background: 'white', borderRadius: 8, overflow: 'hidden', border: '1px solid #2a2a2c' }}>
+                <div style={{ padding: '20px 24px', background: '#111113', borderBottom: '1px solid #2a2a2c' }}>
+                  <div className="cg" style={{ fontSize: 20, color: 'white', lineHeight: 1.3 }}>{ex.q}</div>
+                </div>
+                <div style={{ padding: '20px 24px 0' }}>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#333', lineHeight: 1.8, marginBottom: 16 }}>{ex.a}</div>
+                  <div style={{ background: '#FAFAF8', border: '1px solid #F0EDE6', borderRadius: 6, padding: '14px 16px', marginBottom: 16 }}>
+                    <div className="mono" style={{ fontSize: 9, letterSpacing: '.12em', textTransform: 'uppercase', color: '#999', marginBottom: 6 }}>Enkelt uttryckt</div>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#444', lineHeight: 1.8 }}>{ex.simplified}</div>
+                  </div>
+                </div>
+                <div style={{ padding: '12px 24px', borderTop: '1px solid #F0EDE6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="mono" style={{ fontSize: 10, color: '#C0321A' }}>{ex.sources}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: ex.riskColor, opacity: .7, display: 'inline-block' }} />
+                    <span className="mono" style={{ fontSize: 10, color: '#AAA' }}>{ex.risk}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* HUR DET FUNGERAR */}
-      <section id="hur-det-fungerar" className="section-pad" style={{ background: 'white', borderTop: '1px solid #E0DDD6', borderBottom: '1px solid #E0DDD6', padding: '88px 48px' }}>
+      <section id="hur-det-fungerar" className="sec" style={{ background: 'white', borderTop: '1px solid #E0DDD6', borderBottom: '1px solid #E0DDD6', padding: '88px 48px' }}>
         <div style={{ maxWidth: 1100, margin: '0 auto' }}>
           <div className="label">Hur det fungerar</div>
-          <h2 className="cg" style={{ fontSize: 'clamp(28px, 4vw, 54px)', color: '#0A0A0C', marginBottom: 14, letterSpacing: '-.02em' }}>Från fråga till verifierbart svar</h2>
+          <h2 className="cg" style={{ fontSize: 'clamp(34px, 4vw, 54px)', color: '#0A0A0C', marginBottom: 14, letterSpacing: '-.02em' }}>Från fråga till verifierbart svar</h2>
           <p style={{ fontSize: 15, color: '#666', lineHeight: 1.85, maxWidth: 520, marginBottom: 56 }}>Källorna hittas och riskklassas innan AI:n formulerar ett enda ord.</p>
           <div className="flow-wrap" style={{ display: 'flex', alignItems: 'flex-start', gap: 0, overflowX: 'auto', paddingBottom: 8 }}>
             {[
@@ -285,10 +307,10 @@ export default function Landing() {
       </section>
 
       {/* FEATURES */}
-      <section id="funktioner" className="section-pad" style={{ padding: '88px 48px', maxWidth: 1100, margin: '0 auto' }}>
+      <section id="funktioner" className="sec" style={{ padding: '88px 48px', maxWidth: 1100, margin: '0 auto' }}>
         <div className="label">Funktioner</div>
-        <h2 className="cg" style={{ fontSize: 'clamp(28px, 3.5vw, 50px)', color: '#0A0A0C', marginBottom: 12, letterSpacing: '-.02em' }}>Det du behöver för att arbeta snabbare och säkrare</h2>
-        <p style={{ fontSize: 14, color: '#888', marginBottom: 52, maxWidth: 480, lineHeight: 1.85 }}>Varje funktion är byggd för professionella som arbetar med kvalitet varje dag.</p>
+        <h2 className="cg" style={{ fontSize: 'clamp(32px, 3.5vw, 50px)', color: '#0A0A0C', marginBottom: 12, letterSpacing: '-.02em' }}>Det du behöver för att arbeta snabbare och säkrare</h2>
+        <p style={{ fontSize: 14, color: '#888', marginBottom: 52, maxWidth: 480, lineHeight: 1.85 }}>Varje funktion är byggd för professionella team som arbetar med kvalitet varje dag.</p>
         <div className="feature-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
           {[
             { icon: '§', title: 'Källbaserade svar', desc: 'Varje svar hänvisar till det lagrum det bygger på. Du ser alltid var svaret kommer ifrån.' },
@@ -296,7 +318,7 @@ export default function Landing() {
             { icon: '▦', title: 'Auditlogg', desc: 'Frågor, svar och källor sparas automatiskt för spårbarhet och intern dokumentation.' },
             { icon: '↗', title: 'Klickbara lagrum', desc: 'Gå direkt till originaltexten när du vill verifiera. Varje lagrum är länkat.' },
             { icon: '⟳', title: 'Levande regelindex', desc: 'Strukturerat index över IL, ML, BFL, SFL, ABL och SKV-material. Uppdateras löpande.' },
-            { icon: '◉', title: 'Tax Brain', desc: 'Analysera transaktioner och kvitton — få BAS-konto, moms och lagrum automatiskt.' },
+            { icon: '⊞', title: 'Byggt för team', desc: 'Konsekvent kvalitet och spårbarhet oavsett vem i teamet som ställer frågan.' },
           ].map((f, i) => (
             <div key={i} className="feature-card">
               <div className="mono" style={{ fontSize: 20, color: '#C0321A', marginBottom: 14 }}>{f.icon}</div>
@@ -307,13 +329,122 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* TAX BRAIN */}
+      <section id="tax-brain" style={{ background: '#0A0A0C', padding: '96px 48px', borderTop: '1px solid #111' }}>
+        <div style={{ maxWidth: 1100, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 72 }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(192,50,26,.12)', border: '1px solid rgba(192,50,26,.25)', borderRadius: 20, padding: '5px 14px', marginBottom: 24 }}>
+              <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#C0321A', display: 'inline-block' }} />
+              <span style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#C0321A', letterSpacing: '.04em' }}>Mer än ett söksystem</span>
+            </div>
+            <h2 className="cg" style={{ fontSize: 'clamp(32px,4vw,52px)', color: 'white', marginBottom: 20, letterSpacing: '-.025em', lineHeight: 1.05 }}>
+              Från fråga till verifierat svar. Automatiskt.
+            </h2>
+            <p style={{ fontFamily: 'Georgia, serif', fontSize: 16, color: '#555', lineHeight: 1.8, maxWidth: 620, margin: '0 auto' }}>
+              Normiq lär sig av varje verifierat svar och ger dig ett komplett arbetsflöde för skatt och redovisning.
+            </p>
+          </div>
+
+          <div className="roadmap-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2, marginBottom: 72 }}>
+            {[
+              { num: '01', title: 'Tax Brain', desc: 'Klistra in ett kvitto eller ladda upp en bild. Tax Brain föreslår BAS-konto, momskod och lagrum — inte av AI-gissning.', items: ['Kvitto till kontering på sekunder', 'Deterministisk momsberäkning', 'Godkänn, justera eller avvisa', 'Stöder JPG, PNG, WEBP och PDF'] },
+              { num: '02', title: 'Kunskapsbibliotek', desc: 'Normiq lär sig av varje verifierat svar. Revisorverifierade svar återanvänds automatiskt — liknande frågor besvaras direkt utan att belasta AI:n.', items: ['Revisor verifierar och godkänner svar', 'Automatisk återanvändning vid hög likhet', 'Anonymt frågeregister', 'Bygg din egen kunskapsbas'] },
+              { num: '03', title: 'Levande regelindex', desc: 'Lagtext och SKV-vägledningar indexeras automatiskt varje natt. Du svarar alltid mot de senaste reglerna.', items: ['IL, ML, BFL, SFL, ABL', 'SKV rättslig vägledning', 'Nattlig autoindexering', 'SHA-256 hash-diff — bara ändringar'] },
+            ].map((col, i) => (
+              <div key={i} style={{ background: '#111113', border: '1px solid #1e1e20', padding: '32px 28px' }}>
+                <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#333', letterSpacing: '.12em', marginBottom: 16 }}>{col.num}</div>
+                <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 22, fontWeight: 600, color: 'white', marginBottom: 14 }}>{col.title}</div>
+                <p style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#555', lineHeight: 1.8, marginBottom: 20 }}>{col.desc}</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {col.items.map((item, j) => (
+                    <div key={j} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ color: '#C0321A', flexShrink: 0, marginTop: 3, fontSize: 10 }}>→</span>
+                      <span style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#666', lineHeight: 1.5 }}>{item}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="taxbrain-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center' }}>
+            <div>
+              <h3 className="cg" style={{ fontSize: 'clamp(26px,3vw,38px)', color: 'white', marginBottom: 16, letterSpacing: '-.02em', lineHeight: 1.1 }}>
+                Klistra in ett kvitto. Få kontering direkt.
+              </h3>
+              <p style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#555', lineHeight: 1.9, marginBottom: 32 }}>
+                Tax Brain tar en transaktion — fritext, inklistrat kvitto eller uppladdad bild — och returnerar rätt BAS-konto, momskonto, avdragsrätt och lagrum på sekunder.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 40 }}>
+                {[
+                  ['Ladda upp kvitto eller bild', 'Claude Vision extraherar beskrivning, belopp och momssats automatiskt.'],
+                  ['Beräkning utan AI', 'Netto och moms räknas deterministiskt av koden — aldrig av modellen.'],
+                  ['Konto, lagrum, risk', 'BAS-konto med motivering och klickbara lagrum direkt i svaret.'],
+                ].map(([title, desc]) => (
+                  <div key={title} style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                    <span style={{ color: '#C0321A', flexShrink: 0, marginTop: 4, fontSize: 12 }}>→</span>
+                    <div>
+                      <div style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: 'white', marginBottom: 2 }}>{title}</div>
+                      <div style={{ fontFamily: 'Georgia, serif', fontSize: 13, color: '#555', lineHeight: 1.7 }}>{desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <a href="/register" className="btn-primary">Prova Tax Brain gratis</a>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div style={{ background: '#111113', border: '1px solid #2a2a2c', borderRadius: 10, padding: '20px 22px' }}>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 11, color: '#444', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 12 }}>Inklistrat kvitto</div>
+                <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#777', lineHeight: 1.8 }}>
+                  Restaurang Pelikan<br/>Klientlunch 2026-03-11<br/>
+                  <span style={{ color: '#AAA' }}>Totalt: 1 800 kr inkl. 12% moms</span>
+                </div>
+              </div>
+              <div style={{ textAlign: 'center', color: '#C0321A', fontSize: 22 }}>↓</div>
+              <div style={{ background: 'white', borderRadius: 10, overflow: 'hidden', border: '1px solid #E0DDD6' }}>
+                <div style={{ padding: '20px 22px', borderBottom: '1px solid #F0EDE6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 11, color: '#BBB', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>Konto</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                      <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 28, color: '#0A0A0C', fontWeight: 500 }}>6072</span>
+                      <span style={{ fontFamily: 'Georgia, serif', fontSize: 14, color: '#888' }}>Representation</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 11, color: '#BBB', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>Belopp</div>
+                    <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, color: '#0A0A0C' }}>1 607 kr</div>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#BBB' }}>+ 193 kr moms (2645)</div>
+                  </div>
+                </div>
+                <div style={{ padding: '14px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    {['ML 8 kap. 9', 'IL 16 kap. 2'].map((l, i) => (
+                      <span key={i} style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#C0321A', border: '1px solid rgba(192,50,26,.2)', padding: '2px 7px', borderRadius: 3 }}>§ {l}</span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#7A6010', display: 'inline-block' }} />
+                    <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 10, color: '#AAA' }}>MEDEL</span>
+                  </div>
+                </div>
+                <div style={{ padding: '12px 22px', borderTop: '1px solid #F0EDE6', background: '#FAFAF8' }}>
+                  <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#888', lineHeight: 1.75 }}>
+                    Representation — avdragsrätt saknas för inkomstskatt (IL 16:2). Enbart mat 12% moms: max avdragsgill moms 36 kr/person.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* PRISER — SOLO ONLY */}
       <section id="priser" style={{ background: 'white', borderTop: '1px solid #E0DDD6', borderBottom: '1px solid #E0DDD6' }}>
-        <div className="price-section-inner" style={{ maxWidth: 1100, margin: '0 auto', padding: '88px 48px' }}>
+        <div className="sec-inner" style={{ maxWidth: 1100, margin: '0 auto', padding: '88px 48px' }}>
           <div className="label">Priser</div>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 52, flexWrap: 'wrap', gap: 20 }}>
+          <div className="price-toggle-row" style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 52, flexWrap: 'wrap', gap: 20 }}>
             <div>
-              <h2 className="cg" style={{ fontSize: 'clamp(28px, 3.5vw, 48px)', color: '#0A0A0C', letterSpacing: '-.02em', marginBottom: 8 }}>Ett pris. Allt ingår.</h2>
+              <h2 className="cg" style={{ fontSize: 'clamp(30px, 3.5vw, 48px)', color: '#0A0A0C', letterSpacing: '-.02em', marginBottom: 8 }}>Ett pris. Allt ingår.</h2>
               <p style={{ fontSize: 15, color: '#888', lineHeight: 1.7 }}>14 dagars gratis testperiod. Inget kreditkort krävs.</p>
             </div>
             <div className="toggle-pill">
@@ -324,11 +455,10 @@ export default function Landing() {
             </div>
           </div>
 
-          {/* Solo card — centered */}
           <div style={{ maxWidth: 460, margin: '0 auto' }}>
             <div style={{ background: 'white', border: '1.5px solid #0A0A0C', borderRadius: 8, padding: '40px 36px', position: 'relative' }}>
               <div className="mono" style={{ position: 'absolute', top: -1, left: '50%', transform: 'translateX(-50%)', background: '#0A0A0C', color: 'white', fontSize: 9, letterSpacing: '.1em', textTransform: 'uppercase', padding: '5px 16px', borderRadius: '0 0 6px 6px', whiteSpace: 'nowrap' }}>
-                Öppen beta — begränsat antal platser
+                Öppen beta
               </div>
               <div className="mono" style={{ fontSize: 11, letterSpacing: '.12em', textTransform: 'uppercase', color: '#999', marginBottom: 10 }}>Normiq Solo</div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
@@ -337,30 +467,18 @@ export default function Landing() {
                 </span>
                 <span style={{ fontFamily: 'DM Mono, monospace', fontSize: 13, color: '#AAA' }}>kr/mån</span>
               </div>
-              {billingAnnual && (
-                <div className="mono" style={{ fontSize: 11, color: '#AAA', marginBottom: 4 }}>1 490 kr/år — sparar 298 kr</div>
-              )}
+              {billingAnnual && <div className="mono" style={{ fontSize: 11, color: '#AAA', marginBottom: 6 }}>1 490 kr/år — sparar 298 kr</div>}
               <div style={{ fontSize: 14, color: '#888', lineHeight: 1.7, marginBottom: 28 }}>
-                För dig som driver eget bolag eller jobbar med skatt och redovisning.
+                För dig som driver eget bolag eller jobbar självständigt med skatt och redovisning.
               </div>
-
               <div style={{ borderTop: '1px solid #F0EDE6', paddingTop: 24, marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                {[
-                  '1 användare',
-                  'Advisor — källbaserade svar med lagrum',
-                  'Tax Brain — transaktionsanalys',
-                  'Riskklassning per fråga',
-                  'Klickbara lagrum direkt till källan',
-                  'Kunskapsbibliotek',
-                  'Nattlig källuppdatering (IL, ML, BFL, SFL, ABL)',
-                ].map((f, i) => (
+                {['1 användare','Advisor — källbaserade svar med lagrum','Tax Brain — transaktionsanalys + kvittoscanning','Riskklassning per fråga','Klickbara lagrum direkt till källan','Kunskapsbibliotek','Nattlig källuppdatering (IL, ML, BFL, SFL, ABL)'].map((f, i) => (
                   <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                     <span style={{ color: '#3A7A52', flexShrink: 0, fontFamily: 'DM Mono, monospace', fontSize: 12, marginTop: 1 }}>✓</span>
                     <span style={{ fontSize: 14, color: '#333', lineHeight: 1.5 }}>{f}</span>
                   </div>
                 ))}
               </div>
-
               <a href="/register" className="btn-primary" style={{ width: '100%', justifyContent: 'center', fontSize: 12, letterSpacing: '.1em' }}>
                 Starta gratis testperiod →
               </a>
@@ -369,17 +487,16 @@ export default function Landing() {
               </p>
             </div>
           </div>
-
           <p className="mono" style={{ fontSize: 11, color: '#CCC', textAlign: 'center', marginTop: 32 }}>
-            Behöver ditt team tillgång? Kontakta oss på <a href="mailto:hej@normiq.se" style={{ color: '#C0321A', textDecoration: 'none' }}>hej@normiq.se</a>
+            Behöver ditt team tillgång? <a href="mailto:hej@normiq.se" style={{ color: '#C0321A', textDecoration: 'none' }}>Kontakta oss</a>
           </p>
         </div>
       </section>
 
       {/* FAQ */}
-      <section id="faq" className="faq-section" style={{ padding: '88px 48px', maxWidth: 760, margin: '0 auto' }}>
+      <section id="faq" className="sec" style={{ padding: '88px 48px', maxWidth: 760, margin: '0 auto' }}>
         <div className="label">Vanliga frågor</div>
-        <h2 className="cg" style={{ fontSize: 'clamp(28px, 3.5vw, 50px)', color: '#0A0A0C', marginBottom: 48, letterSpacing: '-.02em' }}>FAQ</h2>
+        <h2 className="cg" style={{ fontSize: 'clamp(32px, 3.5vw, 50px)', color: '#0A0A0C', marginBottom: 48, letterSpacing: '-.02em' }}>FAQ</h2>
         <div style={{ borderTop: '1px solid #E0DDD6' }}>
           {faqs.map((faq, i) => (
             <div key={i} className="faq-item">
@@ -394,10 +511,10 @@ export default function Landing() {
       </section>
 
       {/* CTA */}
-      <section className="cta-section" style={{ background: '#0A0A0C', padding: '96px 48px' }}>
+      <section style={{ background: '#0A0A0C', padding: '96px 48px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'center' }}>
           <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 22 }}>Kom igång idag</div>
-          <h2 className="cg" style={{ fontSize: 'clamp(32px, 4vw, 62px)', color: 'white', marginBottom: 18, letterSpacing: '-.025em', lineHeight: 1.03 }}>
+          <h2 className="cg" style={{ fontSize: 'clamp(36px, 4vw, 62px)', color: 'white', marginBottom: 18, letterSpacing: '-.025em', lineHeight: 1.03 }}>
             Redo att arbeta med källhänvisning i varje svar?
           </h2>
           <p style={{ fontSize: 15, color: '#666', lineHeight: 1.85, marginBottom: 44 }}>
