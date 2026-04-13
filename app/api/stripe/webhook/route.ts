@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   const setSubscriptionStatus = async (userId: string, status: string, data?: {
     stripe_subscription_id?: string
     subscription_period?: string
-    subscription_current_period_end?: string
+    subscription_current_period_end?: string | null
   }) => {
     await supabase.from('profiles').update({
       subscription_status: status,
