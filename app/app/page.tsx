@@ -20,7 +20,7 @@ const ANALYZE_EXAMPLES = [
 ]
 
 type AppMode = 'advisor' | 'analyze'
-type InputMode = 'fritext' | 'kvitto'
+type InputMode = 'fritext' | 'kvitto' | 'upload'
 
 function parseReceipt(text: string): { description: string; amount: string; vat: string } {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
@@ -147,7 +147,6 @@ function ConfidenceDots({ value }: { value: number }) {
   return <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>{[1,2,3,4,5].map(i => <div key={i} style={{ width: 5, height: 5, borderRadius: '50%', background: i <= filled ? '#0A0A0C' : '#E0DDD6' }} />)}</div>
 }
 
-// ── Sidebar nav-länk-hjälpkomponent ──
 function NavItem({ icon, label, active, onClick, href, badge }: {
   icon: string; label: string; active?: boolean; onClick?: () => void; href?: string; badge?: string
 }) {
@@ -187,7 +186,6 @@ function NavItem({ icon, label, active, onClick, href, badge }: {
 }
 
 export default function App() {
-  // ── Alla hooks högst upp ──
   const [mode, setMode]                   = useState<AppMode>('advisor')
   const [messages, setMessages]           = useState<Message[]>([])
   const [input, setInput]                 = useState('')
@@ -208,6 +206,9 @@ export default function App() {
   const [analyzeResult, setAnalyzeResult] = useState<AnalysisResult | null>(null)
   const [analyzeLoading, setAnalyzeLoading] = useState(false)
   const [analyzeError, setAnalyzeError]   = useState('')
+  const [uploadFile, setUploadFile]         = useState<File | null>(null)
+  const [uploadLoading, setUploadLoading]   = useState(false)
+  const [uploadPreview, setUploadPreview]   = useState<string | null>(null)
   const bottomRef   = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const supabase    = createClient()
@@ -223,22 +224,70 @@ export default function App() {
   async function loadHistory() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-    const { data } = await supabase.from('queries').select('id, question, answer, sources, risk_level, created_at').eq('session_id', user.id).order('created_at', { ascending: false }).limit(30)
+    const { data } = await supabase
+      .from('queries')
+      .select('id, question, answer, sources, risk_level, created_at')
+      .eq('session_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(30)
     if (data) setHistory(data)
   }
 
   async function loadAnalysisHistory() {
-    const { data } = await supabase.from('tax_analyses').select('description, amount, result, created_at').order('created_at', { ascending: false }).limit(20)
+    const { data } = await supabase
+      .from('tax_analyses')
+      .select('description, amount, result, created_at')
+      .order('created_at', { ascending: false })
+      .limit(20)
     if (data) setAnalysisHistory(data as AnalysisHistoryItem[])
   }
 
   async function loadPopular() {
-    const { data } = await supabase.from('queries').select('question').order('created_at', { ascending: false }).limit(200)
-    if (!data) return
+    // Hämtar de 100 senaste frågorna och visar de 6 senaste unika
+    // När databasen växer visas de faktiskt populäraste automatiskt
+    const { data } = await supabase
+      .from('queries')
+      .select('question, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (!data || data.length === 0) return
+
+    // Räkna förekomster
     const counts: Record<string, number> = {}
-    for (const row of data) { const q = row.question.trim().toLowerCase(); counts[q] = (counts[q] || 0) + 1 }
-    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([question, count]) => ({ question: question.charAt(0).toUpperCase() + question.slice(1), count }))
-    setPopular(sorted)
+    for (const row of data) {
+      const key = row.question.trim().toLowerCase()
+      counts[key] = (counts[key] || 0) + 1
+    }
+
+    // Om vi har frågor med count > 1 — visa populäraste
+    const hasRepeat = Object.values(counts).some(c => c > 1)
+
+    if (hasRepeat) {
+      const sorted = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([question, count]) => ({
+          question: question.charAt(0).toUpperCase() + question.slice(1),
+          count,
+        }))
+      setPopular(sorted)
+    } else {
+      // Visa senaste unika frågorna
+      const seen = new Set<string>()
+      const unique: { question: string; count: number }[] = []
+      for (const row of data) {
+        const key = row.question.trim().toLowerCase()
+        if (!seen.has(key) && unique.length < 6) {
+          seen.add(key)
+          unique.push({
+            question: row.question.charAt(0).toUpperCase() + row.question.slice(1).trim(),
+            count: 0,
+          })
+        }
+      }
+      setPopular(unique)
+    }
   }
 
   async function loadUserRole() {
@@ -269,7 +318,8 @@ export default function App() {
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: newMessages, sessionId: user?.id || sessionId }) })
       const data = await res.json()
       setMessages([...newMessages, { role: 'assistant', content: data.content || data.answer || 'Inget svar mottaget.', queryId: data.query_id, feedback: null }])
-      await loadHistory(); await loadPopular()
+      await loadHistory()
+      await loadPopular()
     } catch { setMessages([...newMessages, { role: 'assistant', content: 'Ett fel uppstod. Försök igen.' }]) }
     setLoading(false)
   }
@@ -287,7 +337,9 @@ export default function App() {
     setAnalyzeLoading(false)
   }
 
-  function loadExample(ex: { description: string; amount: number }) { setAnalyzeDesc(ex.description); setAnalyzeAmount(String(ex.amount)); setAnalyzeResult(null) }
+  function loadExample(ex: { description: string; amount: number }) {
+    setAnalyzeDesc(ex.description); setAnalyzeAmount(String(ex.amount)); setAnalyzeResult(null)
+  }
 
   async function handleFeedback(msgIndex: number, rating: 1 | -1) {
     const msg = messages[msgIndex]
@@ -313,7 +365,7 @@ export default function App() {
         ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: #D0CCC4; border-radius: 2px; }
         .hist-item { padding: 10px 12px; cursor: pointer; border-radius: 6px; transition: background .15s; border: 1px solid transparent; }
         .hist-item:hover { background: rgba(192,50,26,.05); border-color: rgba(192,50,26,.1); }
-        .suggestion-btn { padding: 16px 18px; border: 1px solid #E0DDD6; background: white; cursor: pointer; text-align: left; border-radius: 6px; transition: all .2s; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 18px; color: #333; line-height: 1.35; }
+        .suggestion-btn { padding: 16px 18px; border: 1px solid #E0DDD6; background: white; cursor: pointer; text-align: left; border-radius: 6px; transition: all .2s; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 18px; color: #333; line-height: 1.35; width: 100%; }
         .suggestion-btn:hover { border-color: #C0321A; background: #FDF9F8; transform: translateY(-1px); box-shadow: 0 4px 16px rgba(192,50,26,.07); }
         .example-btn { padding: 12px 14px; border: 1px solid #E0DDD6; background: white; cursor: pointer; text-align: left; border-radius: 6px; transition: all .2s; }
         .example-btn:hover { border-color: #C0321A; background: #FDF9F8; transform: translateY(-1px); }
@@ -340,8 +392,6 @@ export default function App() {
       {/* ── SIDEBAR ── */}
       {sidebarOpen && (
         <aside style={{ width: 276, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
-
-          {/* Logo */}
           <div style={{ padding: '20px 20px 14px', borderBottom: '1px solid #E0DDD6' }}>
             <a href="/landing" style={{ textDecoration: 'none' }}>
               <span className="cg" style={{ fontSize: 27, fontWeight: 600, color: '#0A0A0C', letterSpacing: '-.02em', lineHeight: 1 }}>
@@ -350,33 +400,21 @@ export default function App() {
             </a>
           </div>
 
-          {/* Modulnavigation */}
           <div style={{ padding: '10px 10px 6px', borderBottom: '1px solid #E0DDD6' }}>
             <NavItem icon="§" label="Advisor" active={mode === 'advisor'} onClick={() => setMode('advisor')} />
             <NavItem icon="◈" label="Tax Brain" active={mode === 'analyze'} onClick={() => setMode('analyze')} />
-
-            {/* Byråvy — kommer snart */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, letterSpacing: '.06em', textTransform: 'uppercase', color: '#CCC', marginBottom: 3, cursor: 'default' }}>
               <span style={{ fontSize: 12, flexShrink: 0, opacity: .4 }}>⊞</span>
               Byråvy
               <span style={{ marginLeft: 'auto', fontFamily: 'DM Mono, monospace', fontSize: 8, letterSpacing: '.08em', color: '#C0321A', background: '#FDF4F3', border: '1px solid rgba(192,50,26,.2)', padding: '2px 6px', borderRadius: 10 }}>SNART</span>
             </div>
-
-            {/* Kunskapsbibliotek — admin + reviewer */}
-            {isAdminOrReviewer && (
-              <NavItem icon="§" label="Kunskapsbibliotek" href="/library" />
-            )}
-
-            {/* Team — bara admin (ägare) */}
-            {isAdmin && (
-              <NavItem icon="⊹" label="Team" href="/app/team" />
-            )}
+            {isAdminOrReviewer && <NavItem icon="§" label="Kunskapsbibliotek" href="/library" />}
+            {isAdmin && <NavItem icon="⊹" label="Team" href="/app/team" />}
           </div>
 
-          {/* Ny konversation / analys */}
           <div style={{ padding: '8px 10px 6px' }}>
             <button
-              onClick={() => { if (mode === 'advisor') setMessages([]); else { setAnalyzeResult(null); setAnalyzeDesc(''); setAnalyzeAmount(''); setReceiptText(''); setReceiptParsed(false) } }}
+              onClick={() => { if (mode === 'advisor') setMessages([]); else { setAnalyzeResult(null); setAnalyzeDesc(''); setAnalyzeAmount(''); setReceiptText(''); setReceiptParsed(false); setUploadFile(null); setUploadPreview(null) } }}
               style={{ width: '100%', padding: '9px 13px', background: '#F5F3EE', border: '1px solid #E0DDD6', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#666', cursor: 'pointer', textAlign: 'left', letterSpacing: '.06em', textTransform: 'uppercase', transition: 'all .2s', display: 'flex', alignItems: 'center', gap: 8 }}
               onMouseEnter={e => { e.currentTarget.style.background = '#0A0A0C'; e.currentTarget.style.color = 'white'; e.currentTarget.style.borderColor = '#0A0A0C' }}
               onMouseLeave={e => { e.currentTarget.style.background = '#F5F3EE'; e.currentTarget.style.color = '#666'; e.currentTarget.style.borderColor = '#E0DDD6' }}>
@@ -385,7 +423,6 @@ export default function App() {
             </button>
           </div>
 
-          {/* Historik */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '2px 7px 8px' }}>
             {mode === 'advisor' ? (
               <>
@@ -432,7 +469,6 @@ export default function App() {
             )}
           </div>
 
-          {/* Footer */}
           <div style={{ padding: '12px 16px', borderTop: '1px solid #E0DDD6' }}>
             <div className="mono" style={{ fontSize: 10, color: '#C8C4BC', lineHeight: 1.8 }}>
               IL · ML · BFL · SFL · ABL<br />
@@ -445,7 +481,6 @@ export default function App() {
       {/* ── MAIN ── */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {/* TOP BAR */}
         <div style={{ padding: '13px 36px', borderBottom: '1px solid #E0DDD6', display: 'flex', alignItems: 'center', gap: 16, background: 'white' }}>
           <button onClick={() => setSidebarOpen(v => !v)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 5, color: '#BBB', transition: 'color .2s' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#0A0A0C')} onMouseLeave={e => (e.currentTarget.style.color = '#BBB')}>
@@ -470,22 +505,30 @@ export default function App() {
                   </div>
                   <h1 className="cg" style={{ fontSize: 'clamp(40px,4.5vw,64px)', color: '#0A0A0C', marginBottom: 14, lineHeight: .94, letterSpacing: '-.03em' }}>Vad vill du veta?</h1>
                   <p style={{ fontSize: 15, color: '#999', marginBottom: 36, lineHeight: 1.85 }}>Ställ en fråga om skatt, moms eller redovisning</p>
+
                   {popular.length > 0 ? (
                     <div>
-                      <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', marginBottom: 12 }}>Populärast just nu</div>
+                      <div className="mono" style={{ fontSize: 9, letterSpacing: '.14em', textTransform: 'uppercase', color: '#CCC', marginBottom: 12 }}>
+                        {popular.some(p => p.count > 1) ? 'Populärast just nu' : 'Senaste frågor'}
+                      </div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {popular.slice(0, 6).map((item, idx) => (
-                          <button key={idx} className="suggestion-btn" onClick={() => sendMessage(item.question)} style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 18px' }}>
+                        {popular.map((item, idx) => (
+                          <button key={idx} className="suggestion-btn" onClick={() => sendMessage(item.question)}
+                            style={{ display: 'flex', alignItems: 'flex-start', gap: 14, padding: '14px 18px' }}>
                             <span className="mono" style={{ fontSize: 11, color: '#C0321A', flexShrink: 0, marginTop: 3, minWidth: 16 }}>{idx + 1}</span>
                             <span style={{ fontFamily: 'Cormorant Garamond, Georgia, serif', fontSize: 18, color: '#333', lineHeight: 1.35, textAlign: 'left' }}>{item.question}</span>
-                            <span className="mono" style={{ fontSize: 10, color: '#CCC', flexShrink: 0, marginTop: 5, marginLeft: 'auto' }}>{item.count}×</span>
+                            {item.count > 1 && (
+                              <span className="mono" style={{ fontSize: 10, color: '#CCC', flexShrink: 0, marginTop: 5, marginLeft: 'auto' }}>{item.count}×</span>
+                            )}
                           </button>
                         ))}
                       </div>
                     </div>
                   ) : (
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      {['Hur mycket kan jag ta ut i utdelning från mitt fåmansbolag?','Vad gäller för representation och avdragsrätt?','Hur bokför jag en faktura med 25% moms?','Vad är skillnaden mellan K2 och K3?'].map(s => <button key={s} className="suggestion-btn" onClick={() => sendMessage(s)}>{s}</button>)}
+                      {['Hur mycket kan jag ta ut i utdelning från mitt fåmansbolag?','Vad gäller för representation och avdragsrätt?','Hur bokför jag en faktura med 25% moms?','Vad är skillnaden mellan K2 och K3?'].map(s => (
+                        <button key={s} className="suggestion-btn" onClick={() => sendMessage(s)}>{s}</button>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -546,7 +589,7 @@ export default function App() {
                                   <><button className="feedback-btn" onClick={() => handleFeedback(i, 1)} title="Bra svar">👍</button><button className="feedback-btn" onClick={() => handleFeedback(i, -1)} title="Dåligt svar">👎</button></>
                                 ) : (
                                   <div className="mono" style={{ fontSize: 10, color: m.feedback === 1 ? '#2E6644' : '#A02818', background: m.feedback === 1 ? '#EFF6F2' : '#FAF0EE', border: `1px solid ${m.feedback === 1 ? '#BFD9CC' : '#E8C8C0'}`, padding: '4px 12px', borderRadius: 4 }}>
-                                    {m.feedback === 1 ? 'Tack!' : 'Noterat — vi förbättrar det'}
+                                    {m.feedback === 1 ? 'Tack! Sparas i kunskapsbiblioteket.' : 'Noterat — vi förbättrar det'}
                                   </div>
                                 )}
                               </div>
@@ -606,10 +649,10 @@ export default function App() {
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
                 <div style={{ display: 'flex', gap: 4, background: '#F0EDE6', borderRadius: 7, padding: 3, alignSelf: 'flex-start' }}>
-                  {(['fritext', 'kvitto'] as InputMode[]).map(m => (
-                    <button key={m} onClick={() => { setInputMode(m); setReceiptParsed(false) }}
+                  {(['fritext', 'kvitto', 'upload'] as InputMode[]).map(m => (
+                    <button key={m} onClick={() => { setInputMode(m); setReceiptParsed(false); setUploadFile(null); setUploadPreview(null) }}
                       style={{ padding: '6px 14px', border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', transition: 'all .2s', background: inputMode === m ? 'white' : 'transparent', color: inputMode === m ? '#0A0A0C' : '#AAA', boxShadow: inputMode === m ? '0 1px 4px rgba(0,0,0,.08)' : 'none' }}>
-                      {m === 'fritext' ? 'Fritext' : 'Kvitto'}
+                      {m === 'fritext' ? 'Fritext' : m === 'kvitto' ? 'Kvitto' : 'Ladda upp'}
                     </button>
                   ))}
                 </div>
@@ -632,6 +675,104 @@ export default function App() {
                         onMouseLeave={e => { e.currentTarget.style.background = '#F5F3EE'; e.currentTarget.style.color = '#555'; e.currentTarget.style.borderColor = '#E0DDD6' }}>
                         Tolka kvitto
                       </button>
+                    )}
+                    {receiptParsed && (
+                      <div style={{ marginTop: 8, padding: '10px 14px', background: '#EFF6F2', border: '1px solid #BFD9CC', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ color: '#2E6644', fontSize: 13 }}>✓</span>
+                        <span className="mono" style={{ fontSize: 10, color: '#2E6644' }}>Tolkat — kontrollera fälten nedan</span>
+                        <button onClick={() => setReceiptParsed(false)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#2E6644', cursor: 'pointer', fontFamily: 'DM Mono, monospace', fontSize: 10, opacity: 0.6 }}>ändra</button>
+                      </div>
+                    )}
+                  </div>
+
+                {inputMode === 'upload' && (
+                  <div>
+                    <div
+                      onClick={() => document.getElementById('receipt-upload')?.click()}
+                      style={{ border: '2px dashed #E0DDD6', borderRadius: 8, padding: '32px 20px', textAlign: 'center', cursor: 'pointer', transition: 'all .2s', background: uploadPreview ? 'white' : '#FAFAF8' }}
+                      onMouseEnter={e => e.currentTarget.style.borderColor = '#0A0A0C'}
+                      onMouseLeave={e => e.currentTarget.style.borderColor = uploadPreview ? '#E0DDD6' : '#E0DDD6'}
+                      onDragOver={e => { e.preventDefault(); e.currentTarget.style.borderColor = '#C0321A' }}
+                      onDragLeave={e => e.currentTarget.style.borderColor = '#E0DDD6'}
+                      onDrop={e => {
+                        e.preventDefault()
+                        const file = e.dataTransfer.files[0]
+                        if (file) {
+                          setUploadFile(file)
+                          if (file.type.startsWith('image/')) {
+                            const reader = new FileReader()
+                            reader.onload = ev => setUploadPreview(ev.target?.result as string)
+                            reader.readAsDataURL(file)
+                          } else {
+                            setUploadPreview(null)
+                          }
+                        }
+                      }}>
+                      <input
+                        id="receipt-upload"
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,application/pdf"
+                        style={{ display: 'none' }}
+                        onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            setUploadFile(file)
+                            if (file.type.startsWith('image/')) {
+                              const reader = new FileReader()
+                              reader.onload = ev => setUploadPreview(ev.target?.result as string)
+                              reader.readAsDataURL(file)
+                            } else {
+                              setUploadPreview(null)
+                            }
+                          }
+                        }}
+                      />
+                      {uploadPreview ? (
+                        <img src={uploadPreview} alt="Kvitto" style={{ maxHeight: 200, maxWidth: '100%', borderRadius: 6, objectFit: 'contain' }} />
+                      ) : (
+                        <div>
+                          <div style={{ fontSize: 32, marginBottom: 10 }}>📄</div>
+                          <div style={{ fontFamily: 'Georgia, serif', fontSize: 15, color: '#555', marginBottom: 6 }}>
+                            {uploadFile ? uploadFile.name : 'Dra och släpp eller klicka för att ladda upp'}
+                          </div>
+                          <div className="mono" style={{ fontSize: 10, color: '#CCC', letterSpacing: '.06em' }}>
+                            JPG, PNG, WEBP eller PDF
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {uploadFile && (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8, alignItems: 'center' }}>
+                        <div style={{ flex: 1, fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {uploadFile.name}
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!uploadFile) return
+                            setUploadLoading(true)
+                            setAnalyzeError('')
+                            try {
+                              const fd = new FormData()
+                              fd.append('file', uploadFile)
+                              const res = await fetch('/api/parse-receipt', { method: 'POST', body: fd })
+                              const data = await res.json()
+                              if (data.error) { setAnalyzeError(data.error); return }
+                              if (data.description) setAnalyzeDesc(data.description)
+                              if (data.amount) setAnalyzeAmount(String(data.amount))
+                              if (data.vat_rate !== undefined) setAnalyzeVat(String(data.vat_rate))
+                              setReceiptParsed(true)
+                            } catch { setAnalyzeError('Kunde inte tolka kvittot. Försök igen.') }
+                            setUploadLoading(false)
+                          }}
+                          disabled={uploadLoading}
+                          style={{ padding: '8px 16px', background: uploadLoading ? '#CCC' : '#0A0A0C', color: 'white', border: 'none', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 10, letterSpacing: '.08em', textTransform: 'uppercase', cursor: uploadLoading ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
+                          {uploadLoading ? 'Tolkar...' : 'Tolka kvitto'}
+                        </button>
+                        <button onClick={() => { setUploadFile(null); setUploadPreview(null); setReceiptParsed(false) }}
+                          style={{ padding: '8px 12px', background: 'transparent', color: '#C0321A', border: '1px solid rgba(192,50,26,.3)', borderRadius: 6, fontFamily: 'DM Mono, monospace', fontSize: 10, cursor: 'pointer' }}>
+                          ✕
+                        </button>
+                      </div>
                     )}
                     {receiptParsed && (
                       <div style={{ marginTop: 8, padding: '10px 14px', background: '#EFF6F2', border: '1px solid #BFD9CC', borderRadius: 7, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -667,7 +808,7 @@ export default function App() {
                   </div>
                 )}
               </div>
-              <button className="run-btn" onClick={() => runAnalysis()} disabled={analyzeLoading || !analyzeDesc.trim() || !analyzeAmount || (inputMode === 'kvitto' && !receiptParsed)}>
+              <button className="run-btn" onClick={() => runAnalysis()} disabled={analyzeLoading || !analyzeDesc.trim() || !analyzeAmount || ((inputMode === 'kvitto' || inputMode === 'upload') && !receiptParsed)}>
                 {analyzeLoading ? 'Analyserar...' : 'Analysera'}
               </button>
               {analyzeError && <div className="mono" style={{ fontSize: 12, color: '#A02818', marginTop: 12, padding: '10px 14px', background: '#FAF0EE', borderRadius: 6, border: '1px solid #E8C8C0' }}>{analyzeError}</div>}
