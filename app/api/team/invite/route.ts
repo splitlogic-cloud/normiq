@@ -18,7 +18,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Inga e-postadresser angivna' }, { status: 400 })
   }
 
-  // Hämta eller skapa team för denna ägare
   let { data: team } = await supabase
     .from('teams')
     .select('*')
@@ -41,11 +40,9 @@ export async function POST(req: NextRequest) {
     if (error || !newTeam) return NextResponse.json({ error: 'Kunde inte skapa team' }, { status: 500 })
     team = newTeam
 
-    // Sätt team_id på ägaren
     await supabase.from('profiles').update({ team_id: team.id }).eq('id', userId)
   }
 
-  // Kolla antal befintliga medlemmar
   const { count: memberCount } = await supabase
     .from('profiles')
     .select('*', { count: 'exact', head: true })
@@ -55,7 +52,6 @@ export async function POST(req: NextRequest) {
 
   for (const email of emails.slice(0, 10)) {
     try {
-      // Skapa invite-token
       const { data: invite, error: inviteError } = await supabase
         .from('team_invites')
         .insert({ team_id: team.id, email, invited_by: userId })
@@ -69,14 +65,13 @@ export async function POST(req: NextRequest) {
 
       const inviteUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'https://normiq.se'}/invite?token=${invite.token}`
 
-      // Skicka e-post via Resend
       await resend.emails.send({
         from: 'Normiq <hej@normiq.se>',
         to: email,
         subject: 'Du har bjudits in till Normiq',
         html: `
           <div style="font-family: Georgia, serif; max-width: 520px; margin: 0 auto; padding: 48px 32px; background: #F5F3EE;">
-            <div style="font-family: 'DM Mono', monospace; font-size: 28px; font-weight: 600; color: #0A0A0C; margin-bottom: 32px;">
+            <div style="font-family: monospace; font-size: 28px; font-weight: 600; color: #0A0A0C; margin-bottom: 32px;">
               normi<span style="color: #C0321A;">q</span>
             </div>
             <h1 style="font-size: 28px; color: #0A0A0C; margin-bottom: 16px; line-height: 1.2;">
@@ -86,7 +81,7 @@ export async function POST(req: NextRequest) {
               Du har fått en inbjudan att gå med i ett team på Normiq — ett AI-verktyg för svenska skatte- och redovisningsregler med källhänvisning.
             </p>
             <a href="${inviteUrl}" style="display: inline-block; background: #0A0A0C; color: white; font-family: monospace; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; padding: 14px 28px; border-radius: 3px; text-decoration: none;">
-              Acceptera inbjudan →
+              Acceptera inbjudan
             </a>
             <p style="font-size: 12px; color: #AAA; margin-top: 32px; line-height: 1.7;">
               Länken är personlig och gäller för ${email}.<br/>
@@ -97,11 +92,37 @@ export async function POST(req: NextRequest) {
       })
 
       results.push({ email, status: 'sent' })
-    } catch (err) {
+    } catch {
       results.push({ email, status: 'error', error: 'Kunde inte skicka e-post' })
     }
   }
 
   const overLimit = (memberCount ?? 0) >= team.max_members
   return NextResponse.json({ results, overLimit, memberCount })
+}
+
+export async function DELETE(req: NextRequest) {
+  const userId = req.headers.get('x-user-id')
+  if (!userId) return NextResponse.json({ error: 'Ej autentiserad' }, { status: 401 })
+
+  const id = new URL(req.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'invite id saknas' }, { status: 400 })
+
+  const { data: team } = await supabase
+    .from('teams')
+    .select('id')
+    .eq('owner_id', userId)
+    .single()
+
+  if (!team) return NextResponse.json({ error: 'Inget team hittades' }, { status: 404 })
+
+  const { error } = await supabase
+    .from('team_invites')
+    .delete()
+    .eq('id', id)
+    .eq('team_id', team.id)
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  return NextResponse.json({ ok: true })
 }

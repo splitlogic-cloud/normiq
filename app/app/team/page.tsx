@@ -8,17 +8,18 @@ type Invite = { id: string; email: string; created_at: string; accepted_at: stri
 export default function TeamPage() {
   const supabase = createClient()
 
-  const [members, setMembers] = useState<Member[]>([])
-  const [invites, setInvites] = useState<Invite[]>([])
-  const [teamName, setTeamName] = useState('')
-  const [teamId, setTeamId] = useState('')
+  const [members, setMembers]       = useState<Member[]>([])
+  const [invites, setInvites]       = useState<Invite[]>([])
+  const [teamName, setTeamName]     = useState('')
+  const [teamId, setTeamId]         = useState('')
   const [maxMembers, setMaxMembers] = useState(10)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading]       = useState(true)
   const [emailInput, setEmailInput] = useState('')
-  const [sending, setSending] = useState(false)
+  const [sending, setSending]       = useState(false)
   const [sendResult, setSendResult] = useState<{ email: string; status: string }[]>([])
-  const [userId, setUserId] = useState('')
-  const [overLimit, setOverLimit] = useState(false)
+  const [userId, setUserId]         = useState('')
+  const [overLimit, setOverLimit]   = useState(false)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
 
   useEffect(() => { loadTeam() }, [])
 
@@ -27,7 +28,6 @@ export default function TeamPage() {
     if (!user) return
     setUserId(user.id)
 
-    // Hämta team
     const { data: team } = await supabase
       .from('teams')
       .select('id, name, max_members')
@@ -39,7 +39,6 @@ export default function TeamPage() {
     setTeamName(team.name)
     setMaxMembers(team.max_members)
 
-    // Hämta medlemmar (via service route)
     const res = await fetch('/api/team/members', { headers: { 'x-user-id': user.id } })
     if (res.ok) {
       const data = await res.json()
@@ -55,7 +54,6 @@ export default function TeamPage() {
     if (emails.length === 0) return
     setSending(true)
     setSendResult([])
-
     const res = await fetch('/api/team/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
@@ -69,6 +67,29 @@ export default function TeamPage() {
     setSending(false)
   }
 
+  async function cancelInvite(inviteId: string) {
+    if (!confirm('Ta bort inbjudan?')) return
+    setActionLoading(inviteId)
+    await fetch(`/api/team/invite?id=${inviteId}`, {
+      method: 'DELETE',
+      headers: { 'x-user-id': userId },
+    })
+    await loadTeam()
+    setActionLoading(null)
+  }
+
+  async function resendInvite(email: string) {
+    setActionLoading(email)
+    await fetch('/api/team/invite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-user-id': userId },
+      body: JSON.stringify({ emails: [email] }),
+    })
+    setActionLoading(null)
+    setSendResult([{ email, status: 'sent' }])
+    setTimeout(() => setSendResult([]), 3000)
+  }
+
   const inputStyle: React.CSSProperties = {
     width: '100%', padding: '11px 14px', border: '1.5px solid #E0DDD6', borderRadius: 6,
     fontFamily: 'Georgia, serif', fontSize: 14, color: '#0A0A0C', background: 'white', outline: 'none',
@@ -80,14 +101,18 @@ export default function TeamPage() {
     </div>
   )
 
+  const pendingInvites = invites.filter(inv => !inv.accepted_at)
+
   return (
     <div style={{ minHeight: '100vh', background: '#F5F3EE', fontFamily: 'Georgia, serif' }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=DM+Mono:wght@300;400;500&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        .inv-btn { border: none; cursor: pointer; font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 5px 11px; border-radius: 4px; transition: opacity .15s; }
+        .inv-btn:hover:not(:disabled) { opacity: .7; }
+        .inv-btn:disabled { opacity: .4; cursor: not-allowed; }
       `}</style>
 
-      {/* Topbar */}
       <div style={{ background: 'white', borderBottom: '1px solid #E0DDD6', padding: '14px 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <a href="/app" style={{ fontFamily: 'DM Mono, monospace', fontSize: 11, color: '#AAA', textDecoration: 'none', letterSpacing: '.06em', textTransform: 'uppercase' }}>← Tillbaka</a>
         <span style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 20, fontWeight: 600, color: '#0A0A0C' }}>{teamName}</span>
@@ -96,7 +121,6 @@ export default function TeamPage() {
 
       <div style={{ maxWidth: 760, margin: '0 auto', padding: '48px 24px' }}>
 
-        {/* Varning om över gränsen */}
         {overLimit && (
           <div style={{ background: '#FEF9EC', border: '1px solid rgba(122,96,16,.25)', borderRadius: 8, padding: '16px 20px', marginBottom: 28, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
             <span style={{ color: '#7A6010', fontSize: 16, flexShrink: 0 }}>⚠</span>
@@ -176,16 +200,33 @@ export default function TeamPage() {
         </div>
 
         {/* Väntande inbjudningar */}
-        {invites.filter(inv => !inv.accepted_at).length > 0 && (
+        {pendingInvites.length > 0 && (
           <div style={{ background: 'white', border: '1px solid #E0DDD6', borderRadius: 10, padding: '32px' }}>
             <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: 22, fontWeight: 600, color: '#0A0A0C', marginBottom: 20 }}>Väntande inbjudningar</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {invites.filter(inv => !inv.accepted_at).map((inv, i, arr) => (
-                <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 0', borderBottom: i < arr.length - 1 ? '1px solid #F0EDE6' : 'none' }}>
+              {pendingInvites.map((inv, i) => (
+                <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 0', borderBottom: i < pendingInvites.length - 1 ? '1px solid #F0EDE6' : 'none' }}>
                   <div style={{ flex: 1, fontFamily: 'DM Mono, monospace', fontSize: 13, color: '#555' }}>{inv.email}</div>
+
                   <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 9, letterSpacing: '.06em', textTransform: 'uppercase', color: '#7A6010', background: '#FEF9EC', border: '1px solid rgba(122,96,16,.2)', padding: '3px 10px', borderRadius: 10 }}>
                     Väntar
                   </div>
+
+                  <button
+                    className="inv-btn"
+                    onClick={() => resendInvite(inv.email)}
+                    disabled={actionLoading === inv.email}
+                    style={{ background: '#EEF6F1', color: '#2E6644', border: '1px solid rgba(46,102,68,.25)' }}>
+                    {actionLoading === inv.email ? '...' : '↻ Skicka om'}
+                  </button>
+
+                  <button
+                    className="inv-btn"
+                    onClick={() => cancelInvite(inv.id)}
+                    disabled={actionLoading === inv.id}
+                    style={{ background: '#FDF4F3', color: '#C0321A', border: '1px solid rgba(192,50,26,.25)' }}>
+                    {actionLoading === inv.id ? '...' : '✕ Avbryt'}
+                  </button>
                 </div>
               ))}
             </div>
