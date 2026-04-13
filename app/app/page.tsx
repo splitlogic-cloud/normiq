@@ -221,6 +221,14 @@ export default function App() {
     loadUserRole()
   }, [])
 
+  // Stäng sidebar automatiskt på mobil
+  useEffect(() => {
+    const check = () => { if (window.innerWidth < 768) setSidebarOpen(false) }
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
   async function loadHistory() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -387,10 +395,20 @@ export default function App() {
         .msg-in { animation: fadeUp .3s both; } .result-in { animation: fadeUp .25s both; }
         .typing span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #C0321A; margin: 0 3px; animation: pulse 1.3s ease-in-out infinite; }
         .typing span:nth-child(2) { animation-delay: .22s; } .typing span:nth-child(3) { animation-delay: .44s; }
+        @media (max-width: 768px) {
+          aside { position: fixed !important; left: 0 !important; top: 0 !important; bottom: 0 !important; z-index: 200 !important; width: 280px !important; box-shadow: 4px 0 24px rgba(0,0,0,.15) !important; }
+        }
+        @media (max-width: 640px) {
+          .suggestion-btn { font-size: 16px !important; }
+          .msg-in .cg { font-size: 16px !important; }
+        }
       `}</style>
 
       {/* ── SIDEBAR ── */}
       {sidebarOpen && (
+        <>
+        {/* Mobile overlay */}
+        <div onClick={() => setSidebarOpen(false)} style={{ display: 'none' }} className="mobile-overlay" />
         <aside style={{ width: 276, background: 'white', borderRight: '1px solid #E0DDD6', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <div style={{ padding: '20px 20px 14px', borderBottom: '1px solid #E0DDD6' }}>
             <a href="/landing" style={{ textDecoration: 'none' }}>
@@ -476,6 +494,7 @@ export default function App() {
             </div>
           </div>
         </aside>
+        </>
       )}
 
       {/* ── MAIN ── */}
@@ -497,7 +516,7 @@ export default function App() {
         {/* ── ADVISOR ── */}
         {mode === 'advisor' && (
           <>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '36px 48px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 'clamp(16px, 4vw, 48px)' }}>
               {messages.length === 0 ? (
                 <div style={{ maxWidth: 700, margin: '0 auto', paddingTop: 32 }}>
                   <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -604,7 +623,7 @@ export default function App() {
                 </div>
               )}
             </div>
-            <div style={{ padding: '14px 48px 20px', background: '#F5F3EE', borderTop: '1px solid #E0DDD6' }}>
+            <div style={{ padding: '14px clamp(16px, 4vw, 48px) 20px', background: '#F5F3EE', borderTop: '1px solid #E0DDD6' }}>
               <div style={{ maxWidth: 800, margin: '0 auto' }}>
                 <div className="input-wrap">
                   <textarea ref={textareaRef} value={input} onChange={e => setInput(e.target.value)}
@@ -625,7 +644,7 @@ export default function App() {
 
         {/* ── ANALYZE ── */}
         {mode === 'analyze' && (
-          <div style={{ flex: 1, overflowY: 'auto', padding: '36px 48px' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 'clamp(16px, 4vw, 48px)' }}>
             <div style={{ maxWidth: 700, margin: '0 auto' }}>
               <div style={{ marginBottom: 32 }}>
                 <div className="mono" style={{ fontSize: 10, letterSpacing: '.16em', textTransform: 'uppercase', color: '#C0321A', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
