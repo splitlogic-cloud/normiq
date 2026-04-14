@@ -10,8 +10,8 @@ const supabase = createClient(
 )
 
 const PRICES = {
-  monthly: 'price_1TLpjWDMBJTnntwGHFv6JoIP',
-  yearly:  'price_1TLpixDMBJTnntwGs1DSJ7yH',
+  monthly: 'price_1TLqgURbfuG8fe14BthQE2MU',
+  yearly:  'price_1TLqgQRbfuG8fe14aNy12PHO',
 }
 
 export async function POST(req: NextRequest) {
