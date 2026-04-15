@@ -414,7 +414,7 @@ export default function Landing() {
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontFamily: 'Georgia, serif', fontSize: 11, color: '#BBB', letterSpacing: '.06em', textTransform: 'uppercase', marginBottom: 6 }}>Belopp</div>
                     <div style={{ fontFamily: 'DM Mono, monospace', fontSize: 15, color: '#0A0A0C' }}>1 607 kr</div>
-                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#BBB' }}>+ 193 kr moms (2645)</div>
+                    <div style={{ fontFamily: 'Georgia, serif', fontSize: 12, color: '#BBB' }}>+ 193 kr moms (2641)</div>
                   </div>
                 </div>
                 <div style={{ padding: '14px 22px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
