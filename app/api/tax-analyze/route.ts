@@ -113,7 +113,8 @@ function applyHardRules(
   result: TaxAnalyzeOutput,
   net: number,
   vat: number,
-  reverseCharge: boolean
+  reverseCharge: boolean,
+  country: string
 ): TaxAnalyzeOutput {
 
   // 1. Omvänd momsskyldighet — alltid deterministisk
@@ -325,7 +326,7 @@ Returnera JSON-analys.`
     return Response.json({ error: 'Kunde inte parsa AI-svar', raw: rawJson }, { status: 500 })
   }
 
-  result = applyHardRules(result, net, vat, reverseCharge)
+  result = applyHardRules(result, net, vat, reverseCharge, country)
 
   try {
     await supabase.from('tax_analyses').insert({
