@@ -10,10 +10,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// ── KONSTANTER ───────────────────────────────────────────────────────────
-const BELOPPSGRANSEN_2026 = 26250 // exkl. moms, ett halvt prisbasbelopp
+const BELOPPSGRANSEN_2026 = 26250
 
-// ── TYPER ────────────────────────────────────────────────────────────────
 export type TaxAnalyzeInput = {
   description: string
   amount: number
@@ -39,9 +37,9 @@ export type TaxAnalyzeOutput = {
   confidence: number
   reasoning: string
   warning?: string | null
+  reverse_charge?: boolean
 }
 
-// ── RATE LIMIT ───────────────────────────────────────────────────────────
 const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
 
 function checkRateLimit(key: string): boolean {
@@ -56,7 +54,6 @@ function checkRateLimit(key: string): boolean {
   return true
 }
 
-// ── BERÄKNA BELOPP ───────────────────────────────────────────────────────
 function calculateAmounts(amount: number, vatRate: number, vatIncluded: boolean) {
   if (vatRate === 0) return { net: amount, vat: 0 }
   const multiplier = 1 + vatRate / 100
@@ -69,9 +66,43 @@ function calculateAmounts(amount: number, vatRate: number, vatIncluded: boolean)
   return { net: amount, vat }
 }
 
-// ── HARD OVERRIDE: deterministiska regler som aldrig åsidosätts av AI ───
-function applyHardRules(result: TaxAnalyzeOutput, net: number, vat: number): TaxAnalyzeOutput {
-  // 1. Beloppsgräns förbrukningsinventarier — koden bestämmer, inte Claude
+// ── IDENTIFIERA OMVÄND MOMSSKYLDIGHET ────────────────────────────────────
+// Utländska digitala tjänster utan svensk moms = omvänd skattskyldighet
+const FOREIGN_DIGITAL_SERVICES = [
+  'facebook', 'meta', 'google', 'claude', 'anthropic', 'openai', 'chatgpt',
+  'linkedin', 'twitter', 'x.com', 'adobe', 'microsoft', 'aws', 'amazon',
+  'apple', 'dropbox', 'slack', 'notion', 'figma', 'canva', 'hubspot',
+  'salesforce', 'zapier', 'mailchimp', 'stripe', 'zoom', 'spotify',
+  'netflix', 'github', 'vercel', 'supabase', 'digitalocean', 'cloudflare',
+]
+
+function isReverseCharge(description: string, country: string, vatRate: number): boolean {
+  const desc = description.toLowerCase()
+  const isUtland = country !== 'SE'
+  const isUtlandskTjanst = FOREIGN_DIGITAL_SERVICES.some(s => desc.includes(s))
+  // Omvänd skattskyldighet om: utländsk leverantör OCH moms 0% (ingen svensk moms på fakturan)
+  return (isUtland || isUtlandskTjanst) && vatRate === 0
+}
+
+// ── HARD OVERRIDE ────────────────────────────────────────────────────────
+function applyHardRules(
+  result: TaxAnalyzeOutput,
+  net: number,
+  vat: number,
+  reverseCharge: boolean
+): TaxAnalyzeOutput {
+
+  // 1. Omvänd momsskyldighet — alltid deterministisk
+  if (reverseCharge) {
+    const vatAmount = Math.round(net * 0.25 * 100) / 100
+    result.reverse_charge = true
+    result.vat_account = '2614' // Utgående moms omvänd skattskyldighet
+    result.vat_amount = vatAmount
+    result.warning = (result.warning ? result.warning + ' ' : '') +
+      `Omvänd skattskyldighet: Du redovisar utgående moms ${vatAmount} kr (konto 2614) och ingående moms ${vatAmount} kr (konto 2645) i momsdeklarationen. Nettokostnad bokförs på ${result.account}.`
+  }
+
+  // 2. Beloppsgräns förbrukningsinventarier
   const isInventarieKonto = ['1220', '1221', '5410', '5411'].includes(result.account)
   if (isInventarieKonto) {
     if (net <= BELOPPSGRANSEN_2026) {
@@ -85,47 +116,54 @@ function applyHardRules(result: TaxAnalyzeOutput, net: number, vat: number): Tax
     }
   }
 
-  // 2. Representation — alltid konto 6072 (ej avdragsgill), aldrig 6071
-  //    Moms aldrig avdragsgill, ingen avdragsrätt i inkomstskatt
+  // 3. Representation
   const isRepresentation = ['6071', '6072', '7690'].includes(result.account)
-  if (isRepresentation) {
+  if (isRepresentation && !reverseCharge) {
     result.account = result.account === '7690' ? '7690' : '6072'
     result.account_name = result.account === '7690' ? 'Övriga personalkostnader' : 'Representation, ej avdragsgill'
-    result.vat_account = '2645'   // ej avdragsgill ingående moms
+    result.vat_account = '2641'
     result.deductible = false
     result.deductible_percent = 0
   }
 
-  // 3. Belopp — lita aldrig på att Claude räknar rätt
+  // 4. Belopp — deterministiskt
   result.net_amount = net
-  result.vat_amount = vat
+  if (!reverseCharge) result.vat_amount = vat
 
   return result
 }
 
-// ── SYSTEM PROMPT ────────────────────────────────────────────────────────
 function buildSystemPrompt(sources: string): string {
   return `Du är Tax Brain — en skattemässig analysmotor för svenska företag.
 
 Din uppgift är att analysera en affärshändelse och returnera ett JSON-objekt.
-Du får ALDRIG returnera något annat än JSON — inget preamble, inga förklaringar utanför JSON.
+Du får ALDRIG returnera något annat än JSON.
 
 TILLGÄNGLIGA KÄLLOR:
 ${sources}
 
 MOMSREGLER:
 - Normalt avdragsgill ingående moms: konto 2641
-- Ej avdragsgill moms (representation): konto 2645
+- Ej avdragsgill moms (representation): konto 2641 (momsen kan vara delvis avdragsgill beroende på antal personer)
 - Blandad användning privat/tjänst: konto 2640
+- Omvänd skattskyldighet utgående: konto 2614
+- Omvänd skattskyldighet ingående: konto 2645
+
+OMVÄND MOMSSKYLDIGHET (viktigt):
+Om tjänsten köps från utländsk leverantör (Facebook Ads, Google Ads, Claude/Anthropic, Adobe, Microsoft 365 etc.)
+och fakturan saknar svensk moms (0%) — är det omvänd skattskyldighet enligt ML 1 kap. 2 §.
+Köparen redovisar då både utgående moms (2614) och ingående moms (2645) i momsdeklarationen.
+Sätt vat_account till "2614" och ange reverse_charge: true i JSON.
+Vanliga konton för dessa tjänster: 6540 (IT-tjänster), 5420 (programvaror/SaaS), 6410 (marknadsföring).
 
 VANLIGA KONTON (BAS-kontoplan):
 - Datorer/IT förbrukningsinv.: 5410
 - Datorer/IT inventarier: 1220
-- Programvaror engångsköp: 5420
-- SaaS/licenser löpande: 5420
+- Programvaror/SaaS: 5420
+- IT-tjänster (hosting, API etc.): 6540
 - Telefon/abonnemang: 5250
 - Kontorsmaterial: 6110
-- Representation (alltid ej avdragsgill): 6072
+- Representation (ej avdragsgill): 6072
 - Representation intern: 7690
 - Hyra lokal: 5010
 - Resor inrikes: 5810
@@ -142,13 +180,12 @@ REGLER:
 1. Sätt confidence 0.5–0.7 om beskrivningen är vag
 2. Om privatanvändning är möjlig men ej angiven — MEDEL risk + warning
 3. Svara alltid på svenska i reasoning, risk_reason och warning
-4. lagrum ska vara en array av strängar, t.ex. ["IL 18 kap. 1 §", "ML 8 kap. 3 §"]
-5. Konto, avskrivning och momshantering justeras automatiskt av systemet efter ditt svar
+4. lagrum ska vara en array av strängar, t.ex. ["ML 1 kap. 2 §", "IL 16 kap. 1 §"]
 
-RETURNERA EXAKT DETTA JSON-FORMAT (inga andra fält, ingen text utanför JSON):
+RETURNERA EXAKT DETTA JSON-FORMAT:
 {
-  "account": "5410",
-  "account_name": "Förbrukningsinventarier",
+  "account": "5420",
+  "account_name": "Programvaror",
   "vat_account": "2641",
   "vat_amount": 0,
   "net_amount": 0,
@@ -157,14 +194,14 @@ RETURNERA EXAKT DETTA JSON-FORMAT (inga andra fält, ingen text utanför JSON):
   "depreciation_years": null,
   "risk": "LÅG",
   "risk_reason": "...",
-  "lagrum": ["IL 18 kap. 1 §"],
+  "lagrum": ["IL 16 kap. 1 §"],
   "confidence": 0.92,
   "reasoning": "...",
-  "warning": null
+  "warning": null,
+  "reverse_charge": false
 }`
 }
 
-// ── HUVUD-HANDLER ────────────────────────────────────────────────────────
 export async function POST(req: Request) {
   const apiKey = req.headers.get('x-api-key')
   const ip = req.headers.get('x-forwarded-for') || 'anonymous'
@@ -181,10 +218,7 @@ export async function POST(req: Request) {
   }
 
   if (!input.description || typeof input.amount !== 'number') {
-    return Response.json(
-      { error: 'description (string) och amount (number) krävs' },
-      { status: 400 }
-    )
+    return Response.json({ error: 'description och amount krävs' }, { status: 400 })
   }
 
   const vatRate     = input.vat_rate     ?? 25
@@ -194,8 +228,10 @@ export async function POST(req: Request) {
 
   const { net, vat } = calculateAmounts(input.amount, vatRate, vatIncluded)
 
-  // Hämta relevanta källtexter via RAG
-  const searchQuery = `${input.description} ${input.category_hint || ''} bokföring kontering avdrag moms`.trim()
+  // Identifiera omvänd skattskyldighet tidigt
+  const reverseCharge = isReverseCharge(input.description, country, vatRate)
+
+  const searchQuery = `${input.description} ${input.category_hint || ''} bokföring kontering avdrag moms omvänd skattskyldighet`.trim()
 
   let sourcesText = ''
   try {
@@ -211,24 +247,22 @@ export async function POST(req: Request) {
     }
   } catch {
     const manualResults = searchRules(searchQuery)
-    sourcesText = manualResults
-      .map(r => `[${r.ref}] ${r.rubrik}\n${r.text}`)
-      .join('\n\n---\n\n')
+    sourcesText = manualResults.map(r => `[${r.ref}] ${r.rubrik}\n${r.text}`).join('\n\n---\n\n')
   }
 
   const userPrompt = `Analysera denna affärshändelse:
 
 Beskrivning: ${input.description}
-Belopp inkl. moms: ${input.amount} kr
-Netto exkl. moms: ${net} kr
-Moms (${vatRate}%): ${vat} kr
+Belopp: ${input.amount} kr${vatRate === 0 ? ' (ingen moms på fakturan)' : ` inkl. ${vatRate}% moms`}
+Netto: ${net} kr
+Moms: ${vat} kr
 Bolagsform: ${entityType}
 Land: ${country}
+${reverseCharge ? 'OBS: Trolig omvänd skattskyldighet — utländsk tjänst utan svensk moms.' : ''}
 ${input.category_hint ? `Kategoriledtråd: ${input.category_hint}` : ''}
 
 Returnera JSON-analys.`
 
-  // Anropa Claude
   let rawJson = ''
   try {
     const response = await client.messages.create({
@@ -248,21 +282,15 @@ Returnera JSON-analys.`
     return Response.json({ error: 'AI-anrop misslyckades', details: String(err) }, { status: 500 })
   }
 
-  // Parsa JSON
   let result: TaxAnalyzeOutput
   try {
     result = JSON.parse(rawJson)
   } catch {
-    return Response.json(
-      { error: 'Kunde inte parsa AI-svar', raw: rawJson },
-      { status: 500 }
-    )
+    return Response.json({ error: 'Kunde inte parsa AI-svar', raw: rawJson }, { status: 500 })
   }
 
-  // ── HARD OVERRIDE: deterministiska regler åsidosätter alltid AI ─────────
-  result = applyHardRules(result, net, vat)
+  result = applyHardRules(result, net, vat, reverseCharge)
 
-  // Spara i Supabase för analys och förbättring
   try {
     await supabase.from('tax_analyses').insert({
       description: input.description,
@@ -273,14 +301,9 @@ Returnera JSON-analys.`
       risk_level: result.risk,
       created_at: new Date().toISOString(),
     })
-  } catch {
-    // Låt inte DB-fel stoppa svaret
-  }
+  } catch { /* tyst */ }
 
   return Response.json(result, {
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Tax-Brain-Version': '1.3',
-    }
+    headers: { 'Content-Type': 'application/json', 'X-Tax-Brain-Version': '1.4' }
   })
 }
