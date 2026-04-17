@@ -74,15 +74,39 @@ const FOREIGN_DIGITAL_SERVICES = [
   'apple', 'dropbox', 'slack', 'notion', 'figma', 'canva', 'hubspot',
   'salesforce', 'zapier', 'mailchimp', 'stripe', 'zoom', 'spotify',
   'netflix', 'github', 'vercel', 'supabase', 'digitalocean', 'cloudflare',
+  'superhuman', 'notion', 'loom', 'grammarly', 'webflow', 'ahrefs',
+  'semrush', 'intercom', 'zendesk', 'asana', 'monday', 'clickup',
+  'miro', 'typeform', 'calendly', 'buffer', 'hootsuite', 'mailgun',
+  'twilio', 'sendgrid', 'heroku', 'netlify', 'datadog', 'sentry',
 ]
+
+// Utländska valutor — alltid omvänd skattskyldighet om moms = 0
+const FOREIGN_CURRENCIES = ['eur', 'usd', 'gbp', 'nok', 'dkk', 'chf', 'jpy', '€', '$', '£']
+
+function detectCurrency(description: string): boolean {
+  const desc = description.toLowerCase()
+  return FOREIGN_CURRENCIES.some(c => desc.includes(c))
+}
 
 function isReverseCharge(description: string, country: string, vatRate: number): boolean {
   const desc = description.toLowerCase()
   const isUtland = country !== 'SE'
   const isUtlandskTjanst = FOREIGN_DIGITAL_SERVICES.some(s => desc.includes(s))
-  // Omvänd skattskyldighet om: utländsk leverantör OCH moms 0% (ingen svensk moms på fakturan)
-  return (isUtland || isUtlandskTjanst) && vatRate === 0
+  const hasForeignCurrency = detectCurrency(description)
+  // Omvänd skattskyldighet om utländsk leverantör/valuta OCH moms 0%
+  return (isUtland || isUtlandskTjanst || hasForeignCurrency) && vatRate === 0
 }
+
+// ── EU-LÄNDER ────────────────────────────────────────────────────────────
+const EU_COUNTRIES = [
+  'AT','BE','BG','CY','CZ','DE','DK','EE','ES','FI','FR','GR','HR',
+  'HU','IE','IT','LT','LU','LV','MT','NL','PL','PT','RO','SE','SI','SK',
+  // Även vanliga namn
+  'AUSTRIA','BELGIUM','BULGARIA','CYPRUS','CZECHIA','GERMANY','DENMARK',
+  'ESTONIA','SPAIN','FINLAND','FRANCE','GREECE','CROATIA','HUNGARY',
+  'IRELAND','ITALY','LITHUANIA','LUXEMBOURG','LATVIA','MALTA',
+  'NETHERLANDS','POLAND','PORTUGAL','ROMANIA','SLOVENIA','SLOVAKIA',
+]
 
 // ── HARD OVERRIDE ────────────────────────────────────────────────────────
 function applyHardRules(
@@ -95,11 +119,21 @@ function applyHardRules(
   // 1. Omvänd momsskyldighet — alltid deterministisk
   if (reverseCharge) {
     const vatAmount = Math.round(net * 0.25 * 100) / 100
+    const isEU = EU_COUNTRIES.some(c => country.toUpperCase() === c)
+    // 4535 = Inköp av tjänster från annat EU-land, 4531 = utanför EU
+    const importAccount = isEU ? '4535' : '4531'
+    const importAccountName = isEU
+      ? 'Inköp av tjänster från annat EU-land'
+      : 'Inköp av tjänster från land utanför EU'
     result.reverse_charge = true
-    result.vat_account = '2614' // Utgående moms omvänd skattskyldighet
+    result.account = importAccount
+    result.account_name = importAccountName
+    result.vat_account = '2614'
     result.vat_amount = vatAmount
+    result.deductible = true
+    result.deductible_percent = 100
     result.warning = (result.warning ? result.warning + ' ' : '') +
-      `Omvänd skattskyldighet: Du redovisar utgående moms ${vatAmount} kr (konto 2614) och ingående moms ${vatAmount} kr (konto 2645) i momsdeklarationen. Nettokostnad bokförs på ${result.account}.`
+      `Omvänd skattskyldighet: Bokför nettokostnad på konto ${importAccount} (${importAccountName}). Redovisa utgående moms ${vatAmount} kr (konto 2614) och ingående moms ${vatAmount} kr (konto 2645) i momsdeklarationen.`
   }
 
   // 2. Beloppsgräns förbrukningsinventarier
@@ -161,6 +195,8 @@ VANLIGA KONTON (BAS-kontoplan):
 - Datorer/IT inventarier: 1220
 - Programvaror/SaaS: 5420
 - IT-tjänster (hosting, API etc.): 6540
+- Inköp av tjänster från EU-land (omvänd skattskyldighet): 4535
+- Inköp av tjänster utanför EU (omvänd skattskyldighet): 4531
 - Telefon/abonnemang: 5250
 - Kontorsmaterial: 6110
 - Representation (ej avdragsgill): 6072
